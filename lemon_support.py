@@ -49,21 +49,29 @@ def lemon_ica(dataset, userargs, logfile=None):
     dataset['ica'] = ica
 
     logger.info('starting EOG autoreject')
+    # Find and exclude VEOG
     eog_indices, eog_scores = dataset['ica'].find_bads_eog(dataset['raw'])
     dataset['eog_scores'] = eog_scores
-
     dataset['ica'].exclude.extend(eog_indices)
     logger.info('Marking {0} ICs as EOG'.format(len(dataset['ica'].exclude)))
 
+    # Find and exclude HEOG
     heog_indices = lemon_find_heog(fraw, ica)
-
     dataset['ica'].exclude.extend(heog_indices)
     logger.info('Marking {0} ICs as HEOG'.format(len(heog_indices)))
 
+    # Save components as channels in raw object
     src = dataset['ica'].get_sources(fraw).get_data()
-    dataset['veog'] = src[eog_indices[np.argmax(eog_scores[eog_indices])], :]
-    dataset['heog'] = src[heog_indices[0], :]
+    veog = src[eog_indices[np.argmax(eog_scores[eog_indices])], :]
+    heog = src[heog_indices[0], :]
 
+    info = mne.create_info(['ICA-VEOG', 'ICA-HEOG'],
+                           dataset['raw'].info['sfreq'],
+                           ['misc', 'misc'])
+    eog_raw = mne.io.RawArray(np.c_[veog, heog].T, info)
+    dataset['raw'].add_channels([eog_raw], force_update_info=True)
+
+    # Apply ICA denoising or not
     if ('apply' not in userargs) or (userargs['apply'] is True):
         logger.info('Removing selected components from raw data')
         dataset['ica'].apply(dataset['raw'])

@@ -83,15 +83,12 @@ for mode in ['full', 'noica']:
     fout = os.path.join(outdir, 'sub-{subj_id}_proc-{mode}_blink-summary.png'.format(subj_id=subj_id, mode=mode))
     blink_vect, numblinks, evoked_blink = lemon_make_blinks_regressor(dataset['raw'], figpath=fout)
 
-    veog = dataset['veog'].copy()**2
+    heog = dataset['raw'].get_data(picks='ICA-VEOG')**2
     thresh = np.percentile(veog, 95)
-    #veog[veog<thresh] = thresh
-    #veog = veog - thresh
     veog = veog>thresh
-    heog = dataset['heog'].copy()**2
+
+    heog = dataset['raw'].get_data(picks='ICA-HEOG')**2
     thresh = np.percentile(heog, 95)
-    #heog[heog<thresh] = thresh
-    #heog =  heog - thresh
     heog = heog>thresh
 
     # Make task regressor
