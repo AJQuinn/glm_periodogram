@@ -6,9 +6,10 @@ import sails
 from scipy import io, ndimage
 import matplotlib.pyplot as plt
 
+from glm_config import cfg
+
 import logging
 logger = logging.getLogger('osl')
-
 
 
 def lemon_set_channel_montage(dataset, userargs):
@@ -16,8 +17,10 @@ def lemon_set_channel_montage(dataset, userargs):
     logger.info('userargs: {0}'.format(str(userargs)))
 
     subj = '010060'
-    base = f'/Users/andrew/Projects/lemon/EEG_Raw_BIDS_ID/sub-{subj}/RSEEG/'
-    X = io.loadmat(base+f'sub-{subj}.mat')
+    #base = f'/Users/andrew/Projects/lemon/EEG_Raw_BIDS_ID/sub-{subj}/RSEEG/'
+    #base = f'/ohba/pi/knobre/datasets/MBB-LEMON/EEG_MPILMBB_LEMON/EEG_Raw_BIDS_ID/sub-{subj}/RSEEG/'
+    ref_file = os.path.join(cfg['lemon_raw'], f'sub-{subj}', 'RSEEG', f'sub-{subj}.mat')
+    X = io.loadmat(ref_file)
     ch_pos = {}
     for ii in range(len(X['Channel'][0])-1):  #final channel is reference
         key = X['Channel'][0][ii][0][0].split('_')[2]
@@ -82,15 +85,19 @@ def lemon_ica(dataset, userargs, logfile=None):
 
 def lemon_make_task_regressor(dataset):
     ev, ev_id = mne.events_from_annotations(dataset['raw'])
+    print('Found {0} events in raw'.format(ev.shape[0]))
+    print(ev_id)
 
     # Correct for cropping first 10 seconds - not sure why this is necessary?!
-    ev[:, 0] -= int(10*dataset['raw'].info['sfreq'])
+    ev[:, 0] -= dataset['raw'].first_samp
 
     task = np.zeros((dataset['raw'].n_times,))
     for ii in range(ev.shape[0]):
-        if ev[ii, 2] == 200:
+        if ev[ii, 2] == ev_id['Stimulus/S200']:
+            # EYES OPEN
             task[ev[ii,0]:ev[ii,0]+5000] = 1
-        elif ev[ii, 2] == 210:
+        elif ev[ii, 2] == ev_id['Stimulus/S210']:
+            # EYES CLOSED
             task[ev[ii,0]:ev[ii,0]+5000] = -1
         elif ev[ii, 2] == 1:
             task[ev[ii,0]] = task[ev[ii,0]-1]
