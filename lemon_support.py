@@ -178,7 +178,7 @@ def lemon_make_bads_regressor(dataset):
     bads = np.zeros((dataset['raw'].n_times,))
     for an in dataset['raw'].annotations:
         if an['description'].startswith('bad'):
-            start = dataset['raw'].time_as_index(an['onset'])[0]
+            start = dataset['raw'].time_as_index(an['onset'])[0] - dataset['raw'].first_samp
             duration = int(an['duration'] * dataset['raw'].info['sfreq'])
             bads[start:start+duration] = 1
     return bads
