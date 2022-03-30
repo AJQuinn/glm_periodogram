@@ -10,3 +10,8 @@ with open(yaml_path, 'r') as f:
 
 cfg['yaml_path'] = yaml_path
 cfg['code_dir'] = code_dir
+
+# Check LEMON
+cfg['lemon_analysis_dir'] = os.path.join(cfg['lemon_output_dir'], 'analysis')
+cfg['lemon_preprocessed_data_dir'] = os.path.join(cfg['lemon_output_dir'], 'preprocessed_data')
+cfg['lemon_glm_data_dir'] = os.path.join(cfg['lemon_output_dir'], 'glm_data')
