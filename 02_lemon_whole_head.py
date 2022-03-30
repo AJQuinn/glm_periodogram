@@ -18,8 +18,9 @@ import qlt
 import logging
 logger = logging.getLogger('osl')
 
-outdir = '/Users/andrew/Projects/glm/glm_psd/analysis'
-figbase = '/Users/andrew/Projects/glm/glm_psd/figures/'
+from glm_config import cfg
+
+outdir = cfg['lemon_analysis_dir']
 
 #%% --------------------------------------------------
 # Preprocessing
@@ -83,11 +84,11 @@ for mode in ['full', 'noica']:
     fout = os.path.join(outdir, 'sub-{subj_id}_proc-{mode}_blink-summary.png'.format(subj_id=subj_id, mode=mode))
     blink_vect, numblinks, evoked_blink = lemon_make_blinks_regressor(dataset['raw'], figpath=fout)
 
-    heog = dataset['raw'].get_data(picks='ICA-VEOG')**2
+    veog = dataset['raw'].get_data(picks='ICA-VEOG')[0, :]**2
     thresh = np.percentile(veog, 95)
     veog = veog>thresh
 
-    heog = dataset['raw'].get_data(picks='ICA-HEOG')**2
+    heog = dataset['raw'].get_data(picks='ICA-HEOG')[0, :]**2
     thresh = np.percentile(heog, 95)
     heog = heog>thresh
 
@@ -109,7 +110,7 @@ for mode in ['full', 'noica']:
     covs = {'Linear Trend': np.linspace(0, 1, dataset['raw'].n_times),
             'Eyes Open>Closed': task}
     #cons = {'Bad Segments': bads, 'Blinks': blink_vect}
-    cons = {'bads': bads, 'veog': veog, 'heog': heog}
+    cons = {'Bad Segments': bads, 'V-EOG': veog, 'H-EOG': heog}
     fs = dataset['raw'].info['sfreq']
     freq_vect, copes, varcopes, extras = sails.stft.glm_periodogram(XX, axis=0,
                                                                     covariates=covs,
@@ -146,7 +147,7 @@ for mode in ['full', 'noica']:
     tstat_args = {'sigma_hat': 'auto'}
 
     P = []
-    run_perms = False
+    run_perms = True
     for icon in range(1, design.num_contrasts):
         fpath = os.path.join(outdir, 'sub-{subj_id}_proc-{mode}_perms-con{icon}.pkl'.format(subj_id=subj_id, mode=mode, icon=icon))
         if run_perms:
@@ -315,11 +316,11 @@ for mode in ['full', 'noica']:
 
     ax = plt.subplot(313)
     for ii in range(7):
-        x = models[ii].r_square.flatten() * 100
+        x = models[6-ii].r_square.flatten() * 100
         y = np.random.normal(ii+1, 0.05, size=len(x))
         plt.plot(x, y, 'r.', alpha=0.2)
-    h = plt.boxplot([m.r_square.flatten() * 100 for m in models], vert=False, showfliers=False)
-    plt.yticks(np.arange(1,8),labels)
+    h = plt.boxplot([m.r_square.flatten() * 100 for m in models[::-1]], vert=False, showfliers=False)
+    plt.yticks(np.arange(1,8),labels[::-1])
     for tag in ['top', 'right']:
         ax.spines[tag].set_visible(False)
     ax.set_xlabel('R-Squared (%)')
@@ -331,4 +332,60 @@ for mode in ['full', 'noica']:
     qlt.subpanel_label(ax, chr(65+6))
 
     fout = os.path.join(outdir, 'sub-{subj_id}_proc-{mode}_glm-modelselection.png'.format(subj_id=subj_id, mode=mode))
+    plt.savefig(fout, dpi=300, transparent=True)
+
+    #%% ------------------------------------------------------------------------
+
+
+    chan = mne.pick_channels(dataset['raw'].info['ch_names'], ['POz'])[0]
+
+    nperseg = int(fs*2)
+    nstep = nperseg/2
+    noverlap = nperseg - nstep
+    time = np.arange(nperseg/2, dataset['raw'].n_times - nperseg/2 + 1,
+                     nperseg - noverlap)/float(dataset['raw'].info['sfreq'])
+
+    vmin = 0
+    vmax = 0.0025
+
+    plt.figure(figsize=(16, 10))
+    plt.subplots_adjust(right=0.975, top=0.9, hspace=0.4)
+    plt.subplot(411)
+    plt.pcolormesh(time, freq_vect, data.data[:, :, chan].T, vmin=vmin, vmax=vmax, cmap='hot_r')
+    plt.xticks(np.arange(18)*60, np.arange(18))
+    plt.ylabel('Frequency (Hz)')
+    plt.title('STFT Data')
+    plt.colorbar()
+    qlt.subpanel_label(plt.gca(), 'A')
+
+    plt.subplot(412)
+    plt.pcolormesh(time, np.arange(6), design.design_matrix[:, ::-1].T, cmap='RdBu_r')
+    plt.yticks(np.arange(6), model.contrast_names[::-1])
+    plt.xticks(np.arange(18)*60, np.arange(18))
+    plt.title('Design Matrix')
+    plt.colorbar()
+    qlt.subpanel_label(plt.gca(), 'B')
+
+    regs = np.arange(3)
+    fit = np.dot(design.design_matrix[:, regs], model.betas[regs, :, chan])
+    plt.subplot(413)
+    plt.xticks(np.arange(18)*60, np.arange(18))
+    plt.ylabel('Frequency (Hz)')
+    plt.pcolormesh(time, freq_vect, fit.T, vmin=vmin, vmax=vmax, cmap='hot_r')
+    plt.title('Mean + Covariate Regressors')
+    plt.colorbar()
+    qlt.subpanel_label(plt.gca(), 'C')
+
+    regs = np.arange(3)+3
+    fit = np.dot(design.design_matrix[:, regs], model.betas[regs, :, chan])
+    plt.subplot(414)
+    plt.xticks(np.arange(18)*60, np.arange(18))
+    plt.ylabel('Frequency (Hz)')
+    plt.xlabel('Time (mins)')
+    plt.pcolormesh(time, freq_vect, fit.T, vmin=vmin, vmax=0.001, cmap='hot_r')
+    plt.title('Confound Regressors Only')
+    plt.colorbar()
+    qlt.subpanel_label(plt.gca(), 'D')
+
+    fout = os.path.join(outdir, 'sub-{subj_id}_proc-{mode}_glm-singlechanTF.png'.format(subj_id=subj_id, mode=mode))
     plt.savefig(fout, dpi=300, transparent=True)
