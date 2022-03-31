@@ -144,7 +144,7 @@ for mode in ['full', 'noica']:
     adjacency = mne.stats.cluster_level._setup_adjacency(adjacency, ntests, ntimes)
 
     cft = 3
-    tstat_args = {'sigma_hat': 'auto'}
+    tstat_args = {'hat_factor': 5e-3, 'varcope_smoothing': 'medfilt', 'window_size': 15, 'smooth_dims': 1}
 
     P = []
     run_perms = True
@@ -154,8 +154,8 @@ for mode in ['full', 'noica']:
             p = glm.permutations.MNEClusterPermutation(design, data, icon, 250,
                                                        nprocesses=3,
                                                        metric='tstats',
-                                                       cluster_forming_threshold=cft,
                                                        tstat_args=tstat_args,
+                                                       cluster_forming_threshold=cft,
                                                        adjacency=adjacency)
 
             with open(fpath, "wb") as dill_file:

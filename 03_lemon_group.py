@@ -99,8 +99,9 @@ ntests = np.prod(data.data.shape[2:])
 ntimes = data.data.shape[2]
 adjacency = mne.stats.cluster_level._setup_adjacency(adjacency, ntests, ntimes)
 
-cft = 2.3
-tstat_args = {'sigma_hat': 'auto'}
+cft = 3
+tstat_args = {'hat_factor': 5e-3, 'varcope_smoothing': 'medfilt',
+              'window_size': 15, 'smooth_dims': 1}
 
 # Permuate
 # Blinks on Mean, Mean on linear, task, blinks, bads
@@ -288,12 +289,77 @@ plt.savefig(fout, transparent=True, dpi=300)
 
 plt.figure()
 for ii in range(3):
-    for jj in range(5):
-        ind = (jj+1)+ii*5
+    for jj in range(6):
+        ind = (jj+1)+ii*6
         print(ind)
-        plt.subplot(3, 5, ind)
-        plt.plot(freq_vect, gmodel.copes[ii, jj, :, :])
+        plt.subplot(3, 6, ind)
+
+        ts = gmodel.get_tstats(**tstat_args)[ii, jj, : ,:]
+
+        plt.plot(freq_vect, ts)
+        plt.title(gl_contrast_names[ii] + ' : ' + fl_contrast_names[jj])
 
 #%% ----------------------------
 
+fx = qlt.prep_scaled_freq(0.5, freq_vect,)
 
+plt.figure(figsize=(16, 10))
+plt.subplots_adjust(hspace=0.4, wspace=0.35)
+plt.subplots_adjust(hspace=0.4, wspace=0.3, top=1, left=0.075, right=0.975)
+ii = 0
+for jj in range(6):
+    ind = (jj+7)+ii*6
+    ax = plt.subplot(3,6,ind)
+
+    if jj == 0:
+        qlt.plot_joint_spectrum(ax, gmodel.copes[0, 0, :, :], raw, freq_vect, base=0.5, freqs=[0.5, 9, 24], topo_scale=None)
+    else:
+        fl_mean_data = deepcopy(data)
+        fl_mean_data.data = data.data[:, jj, : ,:]
+        qlt.plot_sensorspace_clusters(fl_mean_data, P[jj], raw, ax,
+                                      base=0.5, title=to_permute[jj][2],
+                                      ylabel='t-stat', thresh=99, xvect=freq_vect)
+    qlt.subpanel_label(ax, chr(65+jj), yf=1.1)
+
+
+    ax = plt.subplot(3,6,ind+6)
+    ax.plot(fx[0], fl_mean_data.data.mean(axis=2).T)
+    ax.set_xticks(fx[2], fx[1])
+    if jj == 0:
+        qlt.decorate_spectrum(ax, ylabel='amplitude')
+    else:
+        qlt.decorate_spectrum(ax, ylabel='')
+        ax.set_ylim(-0.002, 0.002)
+        if jj > 1:
+            ax.set_yticklabels([])
+
+fout = os.path.join(cfg['lemon_analysis_dir'], 'lemon-group_glm-simpleeffects.png')
+plt.savefig(fout, transparent=True, dpi=300)
+
+
+#%% ----------------------------
+
+plt.figure(figsize=(12,8))
+
+ax = plt.subplot(1,3,1)
+qlt.plot_joint_spectrum(ax, gmodel.copes[0, 0, :, :], raw, freq_vect,
+                        title='Group Mean', base=0.5,
+                        freqs=[0.5, 9, 24], topo_scale=None)
+qlt.subpanel_label(ax, chr(65), yf=1.1)
+
+fl_mean_data = deepcopy(data)
+fl_mean_data.data = data.data[:, 0, : ,:]
+ax = plt.subplot(1,3,2)
+qlt.plot_sensorspace_clusters(fl_mean_data, P[6], raw, ax,
+                              base=0.5, title=to_permute[6][2],
+                              ylabel='t-stat', thresh=99, xvect=freq_vect)
+qlt.subpanel_label(ax, chr(66), yf=1.1)
+ax = plt.subplot(1,3,3)
+qlt.plot_sensorspace_clusters(fl_mean_data, P[7], raw, ax,
+                              base=0.5, title=to_permute[7][2],
+                              ylabel='t-stat', thresh=99, xvect=freq_vect)
+qlt.subpanel_label(ax, chr(67), yf=1.1)
+plt.subplots_adjust(top=0.6)
+
+fout = os.path.join(cfg['lemon_analysis_dir'], 'lemon-group_glm-higherordereffects.png')
+plt.savefig(fout, transparent=True, dpi=300)
