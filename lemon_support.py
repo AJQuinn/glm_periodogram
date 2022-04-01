@@ -98,6 +98,12 @@ def camcan_ica(dataset, userargs):
     ica.fit(fraw, picks=userargs['picks'])
     dataset['ica'] = ica
 
+    logger.info('starting ECG autoreject')
+    # Find and exclude ECG
+    ecg_indices, ecg_scores = dataset['ica'].find_bads_ecg(dataset['raw'])
+    dataset['ica'].exclude.extend(ecg_indices)
+    logger.info('Marking {0} ICs as ECG'.format(len(dataset['ica'].exclude)))
+
     logger.info('starting EOG autoreject')
     # Find and exclude VEOG
     heog_indices, heog_scores = dataset['ica'].find_bads_eog(dataset['raw'], ch_name='EOG061')
@@ -113,11 +119,12 @@ def camcan_ica(dataset, userargs):
     # Indices are sorted by score so trust that first is best...
     veog = src[veog_indices[0], :]
     heog = src[heog_indices[0], :]
+    ecg = src[ecg_indices[0], :]
 
-    info = mne.create_info(['ICA-VEOG', 'ICA-HEOG'],
+    info = mne.create_info(['ICA-VEOG', 'ICA-HEOG', 'ICA-ECG'],
                            dataset['raw'].info['sfreq'],
-                           ['misc', 'misc'])
-    eog_raw = mne.io.RawArray(np.c_[veog, heog].T, info)
+                           ['misc', 'misc', 'misc'])
+    eog_raw = mne.io.RawArray(np.c_[veog, heog, ecg].T, info)
     dataset['raw'].add_channels([eog_raw], force_update_info=True)
 
     # Apply ICA denoising or not
