@@ -15,3 +15,7 @@ cfg['code_dir'] = code_dir
 cfg['lemon_analysis_dir'] = os.path.join(cfg['lemon_output_dir'], 'analysis')
 cfg['lemon_preprocessed_data_dir'] = os.path.join(cfg['lemon_output_dir'], 'preprocessed_data')
 cfg['lemon_glm_data_dir'] = os.path.join(cfg['lemon_output_dir'], 'glm_data')
+
+cfg['camcan_analysis_dir'] = os.path.join(cfg['camcan_output_dir'], 'analysis')
+cfg['camcan_preprocessed_data_dir'] = os.path.join(cfg['camcan_output_dir'], 'preprocessed_data')
+cfg['camcan_glm_data_dir'] = os.path.join(cfg['camcan_output_dir'], 'glm_data')

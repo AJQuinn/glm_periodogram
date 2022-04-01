@@ -63,9 +63,55 @@ def lemon_ica(dataset, userargs, logfile=None):
     dataset['ica'].exclude.extend(heog_indices)
     logger.info('Marking {0} ICs as HEOG'.format(len(heog_indices)))
 
-    # Save components as channels in raw object
+   # Save components as channels in raw object
     src = dataset['ica'].get_sources(fraw).get_data()
     veog = src[eog_indices[np.argmax(eog_scores[eog_indices])], :]
+    heog = src[heog_indices[0], :]
+
+    info = mne.create_info(['ICA-VEOG', 'ICA-HEOG'],
+                           dataset['raw'].info['sfreq'],
+                           ['misc', 'misc'])
+    eog_raw = mne.io.RawArray(np.c_[veog, heog].T, info)
+    dataset['raw'].add_channels([eog_raw], force_update_info=True)
+
+    # Apply ICA denoising or not
+    if ('apply' not in userargs) or (userargs['apply'] is True):
+        logger.info('Removing selected components from raw data')
+        dataset['ica'].apply(dataset['raw'])
+    else:
+        logger.info('Components were not removed from raw data')
+    return dataset
+
+
+def camcan_ica(dataset, userargs):
+    logger.info('LEMON Stage - custom EEG ICA function')
+    logger.info('userargs: {0}'.format(str(userargs)))
+
+    # NOTE: **userargs doesn't work because 'picks' is in there
+    ica = mne.preprocessing.ICA(n_components=userargs['n_components'],
+                                max_iter=1000,
+                                random_state=42)
+
+    # https://mne.tools/stable/auto_tutorials/preprocessing/40_artifact_correction_ica.html#filtering-to-remove-slow-drifts
+    fraw = dataset['raw'].copy().filter(l_freq=1., h_freq=None)
+
+    ica.fit(fraw, picks=userargs['picks'])
+    dataset['ica'] = ica
+
+    logger.info('starting EOG autoreject')
+    # Find and exclude VEOG
+    heog_indices, heog_scores = dataset['ica'].find_bads_eog(dataset['raw'], ch_name='EOG061')
+    dataset['ica'].exclude.extend(heog_indices)
+    logger.info('Marking {0} ICs as H-EOG'.format(len(dataset['ica'].exclude)))
+
+    veog_indices, veog_scores = dataset['ica'].find_bads_eog(dataset['raw'], ch_name='EOG062')
+    dataset['ica'].exclude.extend(veog_indices)
+    logger.info('Marking {0} ICs as V-EOG'.format(len(dataset['ica'].exclude)))
+
+    # Get best correlated ICA source and EOGs
+    src = dataset['ica'].get_sources(fraw).get_data()
+    # Indices are sorted by score so trust that first is best...
+    veog = src[veog_indices[0], :]
     heog = src[heog_indices[0], :]
 
     info = mne.create_info(['ICA-VEOG', 'ICA-HEOG'],
