@@ -8,6 +8,7 @@ import numpy as np
 import h5py
 import pandas as pd
 from scipy import stats
+import glmtools as glm
 
 from lemon_support import (lemon_make_blinks_regressor,
                            lemon_make_task_regressor,
@@ -33,7 +34,6 @@ proc_outdir = '/ohba/pi/knobre/ajquinn/lemon/processed_data/'
 
 
 #%% ---------------------------------------------------
-
 
 def get_eeg_data(raw):
     baseref = '/ohba/pi/knobre/datasets/MBB-LEMON/EEG_MPILMBB_LEMON/EEG_Preprocessed_BIDS_ID/sub-010003_EO.set'
@@ -70,8 +70,8 @@ def run_first_level(fname, outdir):
     # GLM-Prep
 
     # Make blink regressor
-    #fout = os.path.join(outdir, 'sub-{subj_id}_proc-full_blink-summary.png'.format(subj_id=subj_id))
-    #blink_vect, numblinks, evoked_blink = lemon_make_blinks_regressor(raw, figpath=fout)
+    fout = os.path.join(outdir, '{subj_id}_blink-summary.png'.format(subj_id=subj_id))
+    blink_vect, numblinks, evoked_blink = lemon_make_blinks_regressor(raw, figpath=fout)
 
     # No reason to square if binarising?
     veog = raw.get_data(picks='ICA-VEOG')[0, :]**2
@@ -96,7 +96,7 @@ def run_first_level(fname, outdir):
     # Run GLM-Periodogram
     covs = {'Linear Trend': np.linspace(0, 1, raw.n_times),
             'Eyes Open>Closed': task}
-    cons = {'bads': bads, 'veog': veog, 'heog': heog}
+    cons = {'Bad Segments': bads, 'V-EOG': veog, 'H-EOG': heog}
     fs = raw.info['sfreq']
     freq_vect, copes, varcopes, extras = sails.stft.glm_periodogram(XX, axis=0,
                                                                     covariates=covs,
@@ -119,6 +119,7 @@ def run_first_level(fname, outdir):
         F.create_dataset('freq_vect', data=freq_vect)
         F.create_dataset('chlabels', data=chlabels)
         F.create_dataset('scan_duration', data=raw.times[-1])
+        F.create_dataset('num_blinks', data=numblinks)
 
     fout = os.path.join(outdir, '{subj_id}_glm-design.png'.format(subj_id=subj_id))
     design.plot_summary(show=False, savepath=fout)
@@ -135,7 +136,8 @@ glm_outdir = '/ohba/pi/knobre/ajquinn/lemon/glm_data/'
 for fname in proc_outputs:
     try:
         run_first_level(fname, glm_outdir)
-    except Exception:
+    except Exception as e:
+        print(e)
         pass
 
 
@@ -149,34 +151,39 @@ df = pd.read_csv('/ohba/pi/knobre/ajquinn/lemon/META_File_IDs_Age_Gender_Educati
 allsubj = np.unique([fname.split('/')[-1].split('_')[0][4:] for fname in fnames])
 allsubj_no = np.arange(len(allsubj))
 
+subj_id = []
 subj = []
 age = []
 sex = []
 hand = []
 task = []
 scandur = []
+num_blinks = []
 
 first_level = []
 for idx, fname in enumerate(fnames):
     print('{0}/{1} - {2}'.format(idx, len(fnames), fname.split('/')[-1]))
     model = obj_from_hdf5file(fname, 'model')
     first_level.append(model.copes[None, :, :, :])
-    subj_id = fname.split('/')[-1].split('_')[0][4:]
-    subj.append(np.where(allsubj == subj_id)[0][0])
+    s_id = fname.split('/')[-1].split('_')[0][4:]
+    subj.append(np.where(allsubj == s_id)[0][0])
+    subj_id.append(s_id)
     if fname.find('EO') > 0:
         task.append(1)
     elif fname.find('EC') > 0:
         task.append(2)
 
-    demo_ind = np.where(df['ID'].str.match('sub-' + subj_id))[0]
+    demo_ind = np.where(df['ID'].str.match('sub-' + s_id))[0]
     if len(demo_ind) > 0:
         tmp_age = df.iloc[demo_ind[0]]['Age']
         age.append(np.array(tmp_age.split('-')).astype(float).mean())
         sex.append(df.iloc[demo_ind[0]]['Gender_ 1=female_2=male'])
+    num_blinks.append(h5py.File(fname, 'r')['num_blinks'][()])
 
 first_level = np.concatenate(first_level, axis=0)
-group_data = glm.data.TrialGLMData(data=first_level, subj=subj, task=task,
-                                   age=age, sex=sex, scandur=scandur)
+group_data = glm.data.TrialGLMData(data=first_level, subj_id=subj_id,
+                                   subj=subj, task=task, age=age, num_blinks=num_blinks,
+                                   sex=sex, scandur=scandur)
 
 outf = os.path.join(glm_outdir, 'lemon_eeg_sensorglm_groupdata.hdf5')
 with h5py.File(outf, 'w') as F:

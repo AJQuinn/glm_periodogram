@@ -102,17 +102,17 @@ def camcan_ica(dataset, userargs):
     # Find and exclude ECG
     ecg_indices, ecg_scores = dataset['ica'].find_bads_ecg(dataset['raw'])
     dataset['ica'].exclude.extend(ecg_indices)
-    logger.info('Marking {0} ICs as ECG'.format(len(dataset['ica'].exclude)))
+    logger.info('Marking {0} ICs as ECG'.format(len(ecg_indices)))
 
     logger.info('starting EOG autoreject')
     # Find and exclude VEOG
     heog_indices, heog_scores = dataset['ica'].find_bads_eog(dataset['raw'], ch_name='EOG061')
     dataset['ica'].exclude.extend(heog_indices)
-    logger.info('Marking {0} ICs as H-EOG'.format(len(dataset['ica'].exclude)))
+    logger.info('Marking {0} ICs as H-EOG'.format(len(heog_indices)))
 
     veog_indices, veog_scores = dataset['ica'].find_bads_eog(dataset['raw'], ch_name='EOG062')
     dataset['ica'].exclude.extend(veog_indices)
-    logger.info('Marking {0} ICs as V-EOG'.format(len(dataset['ica'].exclude)))
+    logger.info('Marking {0} ICs as V-EOG'.format(len(veog_indices)))
 
     # Get best correlated ICA source and EOGs
     src = dataset['ica'].get_sources(fraw).get_data()
