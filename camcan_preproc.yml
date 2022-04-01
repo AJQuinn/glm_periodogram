@@ -1,0 +1,16 @@
+meta:
+  event_codes:
+preproc:
+  - crop:             {tmin: 10}
+  - find_events:      {min_duration: 0.005}
+  - filter:           {l_freq: 0.25, h_freq: 125, method: 'iir', iir_params: {order: 5, ftype: butter}}
+  - notch_filter:     {freqs: 50 100 150}
+  - bad_channels:     {picks: 'mag'}
+  - bad_channels:     {picks: 'grad'}
+  - bad_segments:     {segment_len: 2000, picks: 'mag'}
+  - bad_segments:     {segment_len: 2000, picks: 'grad'}
+  - bad_segments:     {segment_len: 2000, picks: 'mag', mode: 'diff'}
+  - bad_segments:     {segment_len: 2000, picks: 'grad', mode: 'diff'}
+  - resample:         {sfreq: 250, npad: 'auto'}
+  - camcan_ica:       {n_components: 60, picks: 'meg'}
+  - interpolate_bads: None
