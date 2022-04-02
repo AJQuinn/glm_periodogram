@@ -98,21 +98,28 @@ def camcan_ica(dataset, userargs):
     ica.fit(fraw, picks=userargs['picks'])
     dataset['ica'] = ica
 
-    logger.info('starting ECG autoreject')
+    logger.info('starting ICA autoreject')
     # Find and exclude ECG
     ecg_indices, ecg_scores = dataset['ica'].find_bads_ecg(dataset['raw'])
     dataset['ica'].exclude.extend(ecg_indices)
-    logger.info('Marking {0} ICs as ECG'.format(len(dataset['ica'].exclude)))
+    logger.info('ica.find_bads_ecg marking {0}'.format(ecg_indices))
 
-    logger.info('starting EOG autoreject')
     # Find and exclude VEOG
     heog_indices, heog_scores = dataset['ica'].find_bads_eog(dataset['raw'], ch_name='EOG061')
     dataset['ica'].exclude.extend(heog_indices)
-    logger.info('Marking {0} ICs as H-EOG'.format(len(dataset['ica'].exclude)))
+    logger.info('ica.find_bads_eog arking {0} as H-EOG'.format(ecg_indices))
+
+    tmp = np.load(os.path.join(cfg['code_dir'], 'heog_template.npy'))
+    comps = dataset['ica'].get_components()
+    C = np.corrcoef(tmp, comps.T)
+    heog_template_ind = [np.argmax(C[1:, 0])]
+
+    dataset['ica'].exclude.extend(heog_template_ind)
+    logger.info('Template corr marking {0} as H-EOG (corr:{1})'.format(heog_template_ind, C[0, heog_template_ind[0]+1]))
 
     veog_indices, veog_scores = dataset['ica'].find_bads_eog(dataset['raw'], ch_name='EOG062')
     dataset['ica'].exclude.extend(veog_indices)
-    logger.info('Marking {0} ICs as V-EOG'.format(len(dataset['ica'].exclude)))
+    logger.info('ica.find_bads_eog marking {0} as V-EOG'.format(ecg_indices))
 
     # Get best correlated ICA source and EOGs
     src = dataset['ica'].get_sources(fraw).get_data()
@@ -134,6 +141,26 @@ def camcan_ica(dataset, userargs):
     else:
         logger.info('Components were not removed from raw data')
     return dataset
+
+
+def camcan_check_ica(dataset, figpath):
+
+    comps = dataset['ica'].get_components()
+    plt.figure(figsize=(16, 8))
+
+    chans = mne.pick_types(dataset['raw'].info, 'grad')
+    info =  mne.pick_info(dataset['raw'].info, chans)
+    for idx, ind in enumerate(dataset['ica'].exclude):
+        plt.subplot(2, len(dataset['ica'].exclude), idx+1)
+        mne.viz.plot_topomap(comps[chans, ind], info)
+
+    chans = mne.pick_types(dataset['raw'].info, 'mag')
+    info =  mne.pick_info(dataset['raw'].info, chans)
+    for idx, ind in enumerate(dataset['ica'].exclude):
+        plt.subplot(2, len(dataset['ica'].exclude), idx+len(dataset['ica'].exclude)+1)
+        mne.viz.plot_topomap(comps[chans, ind], info)
+
+    plt.savefig(figpath, transparent=True, dpi=300)
 
 
 def lemon_make_task_regressor(dataset):
