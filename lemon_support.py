@@ -104,25 +104,31 @@ def camcan_ica(dataset, userargs):
     # Find and exclude ECG
     ecg_epochs = mne.preprocessing.create_ecg_epochs(fraw, tmin=-.5, tmax=.5)
     ecg_indices, ecg_scores = ica.find_bads_ecg(ecg_epochs, method='ctps')
-    dataset['ica'].exclude.extend(ecg_indices)
+    if len(ecg_indices) > 0:
+        dataset['ica'].exclude.extend(ecg_indices)
     logger.info('ica.find_bads_ecg marking {0}'.format(ecg_indices))
 
     # Find and exclude HEOG - pretty much the same as VEOG in MEG
     heog_indices, heog_scores = dataset['ica'].find_bads_eog(fraw, ch_name='EOG061')
-    dataset['ica'].exclude.extend(heog_indices)
+    if len(heog_indices) > 0:
+    	dataset['ica'].exclude.extend(heog_indices)
     logger.info('ica.find_bads_eog marking {0} as H-EOG'.format(heog_indices))
 
     # Find and exclude VEOG
     eog_epochs = mne.preprocessing.create_eog_epochs(fraw)  # get single EOG trials
     veog_indices, scores = ica.find_bads_eog(eog_epochs)  # find via correlation
-    dataset['ica'].exclude.extend(veog_indices)
+    if len(veog_indices) > 0:
+        dataset['ica'].exclude.extend(veog_indices)
     logger.info('ica.find_bads_eog marking {0} as V-EOG'.format(veog_indices))
 
     # Get best correlated ICA source and EOGs
     src = dataset['ica'].get_sources(fraw).get_data()
 
     # Indices are sorted by score so trust that first is best...
-    veog = src[veog_indices[0], :]
+    if len(veog_indices) > 0:
+        veog = src[veog_indices[0], :]
+    else:
+        veog = src[heog_indices[0], :]
     ecg = src[ecg_indices[0], :]
 
     info = mne.create_info(['ICA-VEOG', 'ICA-ECG'],
