@@ -5,7 +5,7 @@ import numpy as np
 import mne
 import sails
 import pprint
-from scipy import io, ndimage
+from scipy import io, ndimage, stats
 import matplotlib.pyplot as plt
 
 sys.path.append('/Users/andrew/src/qlt')
@@ -22,7 +22,9 @@ outdir = '/Users/andrew/Projects/glm/glm_psd/analysis'
 
 from lemon_support import (lemon_make_blinks_regressor,
                            lemon_make_task_regressor,
-                           lemon_set_channel_montage, lemon_ica)
+                           lemon_make_bads_regressor,
+                           lemon_set_channel_montage,
+                           lemon_ica, lemon_check_ica)
 
 config = osl.preprocessing.load_config('lemon_preproc.yml')
 pprint.pprint(config)
@@ -46,11 +48,34 @@ dataset_noica = osl.preprocessing.run_proc_chain(infile, config, extra_funcs=ext
 #%% ----------------------------------------------------------
 # GLM-Prep
 
-# Make blink regressor
-blink_vect, numblinks, evoked_blink = lemon_make_blinks_regressor(dataset_noica['raw'])
+veog = dataset_ica['raw'].get_data(picks='ICA-VEOG')[0, :]**2
+thresh = np.percentile(veog, 95)
+veog = veog>thresh
+
+heog = dataset_ica['raw'].get_data(picks='ICA-HEOG')[0, :]**2
+thresh = np.percentile(heog, 95)
+heog = heog>thresh
 
 # Make task regressor
-task = lemon_make_task_regressor(dataset_noica)
+task = lemon_make_task_regressor(dataset_ica)
+
+# Make bad-segments regressor
+bads = lemon_make_bads_regressor(dataset_ica)
+
+#bads[blink_vect>0] = 0
+
+#%% --------------------------------------------------------
+# GLM
+
+raw = dataset_ica['raw']
+XX = raw.get_data(picks='eeg').T
+XX = stats.zscore(XX, axis=0)
+
+covs = {'Linear Trend': np.linspace(0, 1, dataset_ica['raw'].n_times),
+        'Eyes Open>Closed': task}
+cons = {'Bad Segments': bads, 'V-EOG': veog, 'H-EOG': heog}
+fs = dataset_ica['raw'].info['sfreq']
+
 
 #%% ----------------------------------------------------------
 # Now run four models
@@ -62,34 +87,34 @@ task = lemon_make_task_regressor(dataset_noica)
 fs = int(dataset_noica['raw'].info['sfreq'])
 inds = np.arange(247000, 396000) + fs*60  # about a minute of eyes open
 inds = Ellipsis
-sensor = 'Pz'
-XX = dataset_noica['raw'].get_data(picks=sensor)[:, inds].T
+sensor = 'Cz'
+XX = stats.zscore(dataset_noica['raw'].get_data(picks=sensor)[:, inds].T, axis=0)
 f, copes, varcopes, extras1 = sails.stft.glm_periodogram(XX, axis=0,
-                                                         covariates={'Open>Closed': task},
+                                                         covariates=covs,
                                                          nperseg=fs*2,
                                                          fmin=0.1, fmax=45,
-                                                         fs=fs,
+                                                         fs=fs, mode='magnitude',
                                                          fit_method='glmtools')
 f, copes, varcopes, extras2 = sails.stft.glm_periodogram(XX, axis=0,
-                                                         covariates={'Open>Closed': task},
-                                                         confounds={'blinks': blink_vect[inds]},
+                                                         covariates=covs,
+                                                         confounds=cons,
                                                          nperseg=fs*2,
                                                          fmin=0.1, fmax=45,
-                                                         fs=fs,
+                                                         fs=fs, mode='magnitude',
                                                          fit_method='glmtools')
-XX = dataset_ica['raw'].get_data(picks=sensor)[:, inds].T
+XX = stats.zscore(dataset_ica['raw'].get_data(picks=sensor)[:, inds].T, axis=0)
 f, copes, varcopes, extras3 = sails.stft.glm_periodogram(XX, axis=0,
-                                                         covariates={'Open>Closed': task},
+                                                         covariates=covs,
                                                          nperseg=fs*2,
                                                          fmin=0.1, fmax=45,
-                                                         fs=fs,
+                                                         fs=fs, mode='magnitude',
                                                          fit_method='glmtools')
 f, copes, varcopes, extras4 = sails.stft.glm_periodogram(XX, axis=0,
-                                                         covariates={'Open>Closed': task},
-                                                         confounds={'blinks': blink_vect[inds]},
+                                                         covariates=covs,
+                                                         confounds=cons,
                                                          nperseg=fs*2,
                                                          fmin=0.1, fmax=45,
-                                                         fs=fs,
+                                                         fs=fs, mode='magnitude',
                                                          fit_method='glmtools')
 
 
@@ -161,7 +186,9 @@ def decorate(ax):
 
 # Extract data segment
 inds = np.arange(140*fs, 160*fs)
-XX = dataset_ica['raw'].get_data(picks=sensor)[:, inds].T
+inds = np.arange(770*fs, 790*fs)
+
+XX = stats.zscore(dataset_ica['raw'].get_data(picks=sensor)[:, inds].T, axis=0)
 mini_task = task[inds]
 eog = dataset_ica['raw'].copy().pick_types(eog=True, eeg=False)
 eog.filter(l_freq=1, h_freq=25, picks='eog')
@@ -174,13 +201,19 @@ config = sails.stft.PeriodogramConfig(input_len=XX.shape[0],
                                       axis=0, fmin=0.1,  fmax=45)
 fw, tw, stft = sails.stft.compute_stft(XX[:, 0], **config.stft_args)
 
+covs_short = {'Linear Trend': covs['Linear Trend'][inds],
+              'Eyes Open>Closed': covs['Eyes Open>Closed'][inds]}
+cons_short = {'Bad Segments': cons['Bad Segments'][inds],
+              'V-EOG': cons['V-EOG'][inds],
+              'H-EOG': cons['H-EOG'][inds]}
+
 # Compute mini-model to get design matrix
 f, copes, varcopes, extras5 = sails.stft.glm_periodogram(XX, axis=0,
-                                                         covariates={'Open>Closed': mini_task},
-                                                         confounds={'Blinks': blink_vect[inds]},
+                                                         covariates=covs_short,
+                                                         confounds=cons_short,
                                                          nperseg=fs*2,
                                                          fmin=0.1, fmax=45,
-                                                         fs=fs,
+                                                         fs=fs, mode='magnitude',
                                                          fit_method='glmtools')
 model, design, data = extras5
 
@@ -190,281 +223,194 @@ fx, ftl, ft = qlt.prep_scaled_freq(0.5, f)
 #%% ------------------------------------------------------------
 # Make figure 2
 
-model, design, data = extras5
+wlagX = sails.stft.apply_sliding_window(XX[:, 0],**config.embedding_args)
+config.window = np.ones_like(config.window)
+lagX = sails.stft.apply_sliding_window(XX[:, 0],**config.embedding_args)
+
 plt.figure(figsize=(16, 9))
 
-ax_ts = plt.axes([0.05, 0.1, 0.066, 0.8])
-ax_tf = plt.axes([0.13, 0.1, 0.125, 0.8])
-cb_tf = plt.axes([0.25, 0.15, 0.01, 0.2])
+ax_ts = plt.axes([0.05, 0.1, 0.4, 0.8])
+ax_tf = plt.axes([0.5, 0.1, 0.125, 0.8])
+ax_tf_cb = plt.axes([0.62, 0.15, 0.01, 0.2])
+ax_des = plt.axes([0.7, 0.1, 0.25, 0.8])
+ax_des_cb = plt.axes([0.96, 0.15, 0.01, 0.2])
 
-ax_cov = plt.axes([0.4, 0.1, 0.066, 0.8])
-ax_dm = plt.axes([0.48, 0.1, 0.125, 0.8])
-cb_dm = plt.axes([0.61, 0.15, 0.01, 0.2])
+ax_ts.plot(0.25*XX[:, 0], time, 'k', lw=0.5)
+for ii in range(19):
+    jit = np.remainder(ii,3) / 5
+    ax_ts.plot((2+jit, 2+jit), (ii, ii+2), lw=4)
+    ax_ts.plot((2+jit, 13), (ii+1, ii+1), lw=0.5, color=[0.8, 0.8, 0.8])
 
-ax_beta_avg = plt.axes([0.725, 0.5, 0.3*0.8, 0.35*0.8])
-ax_beta_cov = plt.axes([0.725, 0.1, 0.3*0.8, 0.35*0.8])
+ax_ts.set_prop_cycle(None)
+x = np.linspace(4, 8, 500)
+ax_ts.plot(x, 0.2*lagX.T + np.arange(19)[None, :] + 1, lw=0.8)
 
-ax_ts.plot(XX-XX.mean(), time, 'k', linewidth=2/3)
-ax_ts.set_ylim(time[0], time[-1])
-ax_ts.set_ylabel('Time (s)')
-ax_ts.text(0, 316.1 ,r'Data', va='bottom', ha='center')
-ax_ts.set_title('EEG Fz')
-qlt.subpanel_label(ax_ts, 'A', yf=1.04); decorate(ax_ts)
+ax_ts.set_prop_cycle(None)
+x = np.linspace(9, 13, 500)
+ax_ts.plot(x, 0.2*wlagX.T + np.arange(19)[None, :] + 1, lw=0.8)
+ax_ts.set_ylim(0, 20)
 
-pcm = ax_tf.pcolormesh(fx, tw, np.abs(stft), shading='nearest', cmap='hot_r')
-ax_tf.set_ylim(time[0], time[-1])
+for tag in ['top', 'right', 'bottom']:
+    ax_ts.spines[tag].set_visible(False)
+ax_ts.set_xticks([])
+ax_ts.set_yticks(np.linspace(0,20,5))
+ax_ts.set_ylabel('Time (seconds)')
+
+qlt.subpanel_label(ax_ts, 'A', xf=-0.02, yf=1.05)
+ax_ts.text(0.1, 1.05, 'Raw EEG', ha='center', transform=ax_ts.transAxes, fontsize='large')
+qlt.subpanel_label(ax_ts, 'B', xf=0.25, yf=1.05)
+ax_ts.text(0.4, 1.05, 'Segmented EEG', ha='center', transform=ax_ts.transAxes, fontsize='large')
+qlt.subpanel_label(ax_ts, 'C', xf=0.7, yf=1.05)
+ax_ts.text(0.85, 1.05, "'Windowed' EEG", ha='center', transform=ax_ts.transAxes, fontsize='large')
+
+pcm = ax_tf.pcolormesh(fx, tw, stft, cmap='magma_r')
 ax_tf.set_xticks(ft)
 ax_tf.set_xticklabels(ftl)
-ax_tf.set_yticklabels([])
-ax_tf.set_xlim(0, 7)
+plt.colorbar(pcm, cax=ax_tf_cb)
+ax_tf_cb.set_title('Magnitude', loc='left')
+for tag in ['top', 'right']:
+    ax_tf.spines[tag].set_visible(False)
 ax_tf.set_xlabel('Frequency (Hz)')
-ax_tf.set_title('Short Time\nFourier Transform')
-qlt.subpanel_label(ax_tf, 'B', yf=1.04); decorate(ax_tf)
-ax_tf.text(30, 316.1 ,r'Short Time\\Fourier Transform: $Y(f)$', va='bottom', ha='center')
-plt.colorbar(pcm, cax=cb_tf, label='Power $(x10^4)$')
+ax_tf.set_yticks(np.linspace(0,20,5))
+ax_tf.text(0.4, 1.05, 'Short Time\nFourier Tranform', va='center', ha='center', transform=ax_tf.transAxes, fontsize='large')
+qlt.subpanel_label(ax_tf, 'D', xf=-0.05, yf=1.05)
 
-ax_cov.plot(eog*1e5, time, 'blue', linewidth=2)
-ax_cov.set_ylim(time[0], time[-1])
-ax_cov.set_ylabel('Time (s)')
-ax_cov.set_xlabel('EOG')
-ax_cov.text(10, 316.1 ,r'Covariate', va='bottom', ha='center')
-ax_cov.set_title('EOG')
-qlt.subpanel_label(ax_cov, 'C', yf=1.04); decorate(ax_cov)
+pcm = plot_design(ax_des, design.design_matrix, design.regressor_names)
+for ii in range(len(design.regressor_names)):
+    ax_des.text(0.5+ii, 19, design.regressor_names[ii], ha='left', va='bottom', rotation=20)
+ax_des.set_yticks(np.linspace(0,20,5)-0.5, np.linspace(0, 20, 5).astype(int))
+ax_des.text(0.25, 1.05, 'GLM Design Matrix', ha='center', transform=ax_des.transAxes, fontsize='large')
+plt.colorbar(pcm, cax=ax_des_cb)
+qlt.subpanel_label(ax_des, 'E', xf=-0.02, yf=1.05)
 
-pcm = plot_design(ax_dm, design.design_matrix, design.regressor_names)
-ax_dm.set_ylim(0, 19)  # normally 19 windows
-ax_dm.set_yticklabels([])
-ax_dm.set_xticks([0.5, 1.5, 2.5])
-ax_dm.set_xticklabels(['Mean', 'Open>Closed', 'Blinks'])
-ax_dm.set_xlabel('Regressors')
-ax_dm.set_title('Design Matrix')
-qlt.subpanel_label(ax_dm, 'D', yf=1.04); decorate(ax_dm)
-ax_dm.text(0.5, 316.1 ,r'Design Matrix: $X$', va='bottom', ha='center')
-plt.colorbar(pcm, cax=cb_dm)
-
-model = extras2[0]
-ax_beta_avg.errorbar(fx, model.copes[0, :, 0], yerr=np.sqrt(model.varcopes[0, :, 0]), errorevery=2)
-ax_beta_avg.legend(model.contrast_names, frameon=False)
-ax_beta_avg.set_xticks(ft)
-ax_beta_avg.set_xticklabels(ftl)
-ax_beta_avg.set_xlim(fx[0], fx[-1])
-ax_beta_avg.set_xlabel('Frequency (Hz)')
-ax_beta_avg.set_ylabel(r'$\beta$')
-ax_beta_avg.text(20, 3.5e-11 ,r'$\hat{Y}(f) = \beta(f)X$', ha='center', fontsize=22)
-ax_beta_avg.set_title('Mean Regressor\nParameter Estimates')
-qlt.subpanel_label(ax_beta_avg, 'E'); decorate(ax_beta_avg)
-
-ax_beta_cov.errorbar(fx, model.copes[1, :, 0], yerr=np.sqrt(model.varcopes[1, :, 0]), errorevery=2)
-ax_beta_cov.errorbar(fx, model.copes[2, :, 0], yerr=np.sqrt(model.varcopes[2, :, 0]), errorevery=2)
-ax_beta_cov.legend(model.contrast_names[1:], frameon=False)
-ax_beta_cov.set_xticks(ft)
-ax_beta_cov.set_xticklabels(ftl)
-ax_beta_cov.set_xlim(fx[0], fx[-1])
-ax_beta_cov.set_xlabel('Frequency (Hz)')
-ax_beta_cov.set_ylabel(r'$\beta$')
-ax_beta_cov.set_title('Covariate & Confound Regressor\nParameter Estimates')
-qlt.subpanel_label(ax_beta_cov, 'F'); decorate(ax_beta_cov)
-
-fout = os.path.join(outdir, 'sub-010060_proc-full_glm-singlechannelsummary.png')
+fout = os.path.join(outdir, 'sub-{subj_id}_single-channel_glm-top.png'.format(subj_id=subj))
 plt.savefig(fout, dpi=300, transparent=True)
 
-#%% --------------------------------------------------------------
-# Prep for figure 3
+#%% ---------------------------------------------------------
 
-import glmtools as glm
+tstat_args = {'hat_factor': 5e-3, 'varcope_smoothing': 'medfilt', 'window_size': 15, 'smooth_dims': 1}
 
-# TASK
-spower = 1
-P1 = glm.permutations.ClusterPermutation(extras2[1], extras2[2], 1, 500,
+P1 = glm.permutations.ClusterPermutation(extras2[1], extras2[2], 2, 500,
                                          pooled_dims=[1],
-                                         tstat_args={'sigma_hat': 'auto'},
-                                         cluster_forming_threshold=3.2**spower,
-                                         metric='tstats', stat_power=spower)
+                                         tstat_args=tstat_args,
+                                         cluster_forming_threshold=3,
+                                         metric='tstats')
 # BLINKS
-P2 = glm.permutations.ClusterPermutation(extras2[1], extras2[2], 2, 500,
+P2 = glm.permutations.ClusterPermutation(extras2[1], extras2[2], 4, 500,
                                          pooled_dims=[1],
-                                         tstat_args={'sigma_hat': 'auto'},
-                                         cluster_forming_threshold=3.2**spower,
-                                         metric='tstats', stat_power=spower)
-
-def decorate(ax):
-    for tag in ['top', 'right']:
-        ax.spines[tag].set_visible(False)
-
-def nudge_ax(ax, xval=0, yval=0):
-    pos = list(ax.get_position().bounds)
-    pos[0] = pos[0] + xval
-    pos[1] = pos[1] + yval
-    ax.set_position(pos)
+                                         tstat_args=tstat_args,
+                                         cluster_forming_threshold=3,
+                                         metric='tstats')
 
 
-# prep sqrt(f) axes
-fx, ftl, ft = qlt.prep_scaled_freq(0.5, f)
+fig = plt.figure(figsize=(16, 6))
+ax = plt.axes([0.075, 0.2, 0.25, 0.6])
+ax.plot(fx, extras2[0].copes[0, :, 0])
+qlt.subpanel_label(ax, 'F', xf=-0.02, yf=1.1)
+ax.text(0.5, 1.1, 'GLM-Spectrum', ha='center', transform=ax.transAxes, fontsize='large')
 
-#%% ----------------------------------------------------------------
-# Figure 3 - without ICA
+plt.axes([0.4, 0.7, 0.1, 0.15])
+plt.plot(fx, extras2[0].copes[2, :, 0])
+qlt.subpanel_label(plt.gca(), 'G', xf=-0.02, yf=1.3)
+plt.axes([0.55, 0.7, 0.1, 0.15])
+plt.plot(fx, extras2[0].varcopes[2, :, 0])
 
-shade = [0.7, 0.7, 0.7]
-xf = -0.03
-plt.figure(figsize=(9, 9))
-#plt.subplots_adjust(wspace=0.3, hspace=0.5, right=0.9, left=0.1)
-plt.subplots_adjust(hspace=0.4)
+ax = plt.axes([0.4, 0.1, 0.25, 0.5])
+clu = P1.get_sig_clusters(extras2[2], 95)
+tinds = np.where(clu[0])[0]
+ax.axvspan(fx[tinds[0]], fx[tinds[-1]], facecolor=[0.7, 0.7, 0.7], alpha=0.5)
+ts = extras2[0].get_tstats(**tstat_args)[2, :, 0]
+ax.plot(fx, ts)
+ax.text(0.5, 1.6, 'Regressor-Spectrum\nEyes Open>Closed', ha='center', transform=ax.transAxes, fontsize='large')
 
-titles = ['Task', 'Blink']
+plt.axes([0.7, 0.7, 0.1, 0.15])
+plt.plot(fx, extras2[0].copes[4, :, 0])
+qlt.subpanel_label(plt.gca(), 'H', xf=-0.02, yf=1.3)
+plt.axes([0.855, 0.7, 0.1, 0.15])
+plt.plot(fx, extras2[0].varcopes[4, :, 0])
+ax = plt.axes([0.7, 0.1, 0.25, 0.5])
+clu = P2.get_sig_clusters(extras2[2], 95)
+for c in np.unique(clu[0]):
+    if c == 0:
+        continue
+    tinds = np.where(clu[0]==c)[0]
+    plt.axvspan(fx[tinds[0]], fx[tinds[-1]], facecolor=[0.7, 0.7, 0.7], alpha=0.5)
+ts = extras2[0].get_tstats(**tstat_args)[4, :, 0]
+plt.plot(fx, ts)
+ax.text(0.5, 1.6, 'Regressor-Spectrum\nV-EOG', ha='center', transform=ax.transAxes, fontsize='large')
 
-for ii in range(2):
-    ax1 = plt.subplot(3, 4, 1+ii*2)
-    ax1.plot(fx, extras2[0].copes[ii+1, :, 0], color='k')
-    qlt.subpanel_label(plt.gca(), chr(65+ii), yf=1.2); decorate(plt.gca());
-    ax1.set_xticks(ft)
-    ax1.set_xticklabels(ftl)
-    ax1.set_xlim(fx[0], fx[-1])
-    plt.ylabel('COPE')
-    plt.title(' '*8 + '{0} Regressor\n'.format(titles[ii]), fontsize=16)
-
-    ax2 = plt.subplot(3, 4, 2+ii*2)
-    ax2.plot(fx, np.sqrt(extras2[0].varcopes[ii+1, :, 0]), color='r')
-    decorate(plt.gca());
-    ax2.set_xticks(ft)
-    ax2.set_xticklabels(ftl)
-    ax2.set_xlim(fx[0], fx[-1])
-    plt.ylabel('STDCOPE')
-
-    nudge_ax(ax1, xval=-0.05+0.1*ii)
-    nudge_ax(ax2, xval=-0.05+0.1*ii)
-
-    P = P1 if ii == 0 else P2
-
-    ts = extras2[0].get_tstats(sigma_hat='auto')
-    ax = plt.subplot(3, 2, 3+ii)
-    clu, cstat = P.get_sig_clusters(extras2[2], 99)
-    for c in range(len(cstat)):
-        inds = np.where(clu==c+1)[0]
-        plt.axvspan(fx[inds[0]], fx[inds[-1]], facecolor=shade, alpha=0.5)
-    plt.plot(fx, ts[ii+1, :, 0], 'k')
+for idx, ax in enumerate(fig.axes):
+    qlt.decorate_spectrum(ax)
     ax.set_xticks(ft)
     ax.set_xticklabels(ftl)
-    ax.set_xlim(fx[0], fx[-1])
-    plt.ylabel('t-statistic')
-    nudge_ax(ax, xval=-0.05+0.1*ii)
-    qlt.subpanel_label(plt.gca(), chr(67+ii), yf=1.2); decorate(plt.gca())
+    if idx == 0:
+        ax.set_ylabel('Magnitude')
+    elif idx in [1, 4]:
+        ax.set_ylabel('COPE')
+        ax.set_xlabel('')
+    elif idx in [2, 5]:
+        ax.set_ylabel('VARCOPE')
+        ax.set_xlabel('')
+    elif idx in [3, 6]:
+        ax.set_ylabel('t-stat')
 
-    ax = plt.subplot(3, 2, 5+ii)
-    proj, ll =  extras2[0].project_range(ii+1)
-    plt.plot(fx, proj[:, :, 0].T)
-    if ii == 0:
-        plt.legend(['Eyes Closed', 'Eyes Open'], frameon=False)
-    else:
-        plt.legend(['No Blink', 'Blink'], frameon=False)
-    for c in range(len(cstat)):
-        inds = np.where(clu==c+1)[0]
-        plt.axvspan(fx[inds[0]], fx[inds[-1]], facecolor=shade, alpha=0.5, label=None)
-    ax.set_xticks(ft)
-    ax.set_xticklabels(ftl)
-    ax.set_xlim(fx[0], fx[-1])
-    plt.xlabel('Frequency (Hz)')
-    plt.ylabel('Power (a.u.)')
-    nudge_ax(ax, xval=-0.05+0.1*ii)
-    qlt.subpanel_label(plt.gca(), chr(69+ii), yf=1.2); decorate(plt.gca())
-
-
-fout = os.path.join(outdir, 'sub-010060_proc-full_glm-singlechannelstats.png')
+fout = os.path.join(outdir, 'sub-{subj_id}_single-channel_glm-bottom.png'.format(subj_id=subj))
 plt.savefig(fout, dpi=300, transparent=True)
 
-fout = os.path.join(figbase, 'sub-010060_proc-full_glm-design.png.png')
-extras4[1].plot_summary(show=False, savepath=fout)
-fout = os.path.join(figbase, 'sub-010060_proc-full_glm-efficiency.png.png')
-extras4[1].plot_efficiency(show=False, savepath=fout)
 
+#%% -------------------------------
 
-#%% --------------------------------------------------------------------
-# Prep for Figure 3 - Supplemental, with ICA
+freq_vect = f
+nperseg = int(fs*2)
+nstep = nperseg/2
+noverlap = nperseg - nstep
+time = np.arange(nperseg/2, dataset_ica['raw'].n_times - nperseg/2 + 1,
+                 nperseg - noverlap)/float(dataset_ica['raw'].info['sfreq'])
 
-# TASK
-spower = 1
-P1 = glm.permutations.ClusterPermutation(extras4[1], extras4[2], 1, 500,
-                                         pooled_dims=[1],
-                                         tstat_args={'sigma_hat': 'auto'},
-                                         cluster_forming_threshold=3.2**spower,
-                                         metric='tstats', stat_power=spower)
-# BLINKS
-P2 = glm.permutations.ClusterPermutation(extras4[1], extras4[2], 2, 500,
-                                         pooled_dims=[1],
-                                         tstat_args={'sigma_hat': 'auto'},
-                                         cluster_forming_threshold=3.2**spower,
-                                         metric='tstats', stat_power=spower)
+model, design, data = extras4
 
-def decorate(ax):
-    for tag in ['top', 'right']:
-        ax.spines[tag].set_visible(False)
-    ax.set_xlim(0, 25)
+vmin = 0
+vmax = 0.0025
+chan = 0
 
-#%% --------------------------------------------------------------------
-# Prep for Figure 3 - Supplemental, with ICA
+plt.figure(figsize=(16, 10))
+plt.subplots_adjust(right=0.975, top=0.9, hspace=0.4)
+plt.subplot(411)
+plt.pcolormesh(time, freq_vect, data.data[:, :, chan].T, vmin=vmin, vmax=vmax, cmap='magma_r')
+plt.xticks(np.arange(18)*60, np.arange(18))
+plt.ylabel('Frequency (Hz)')
+plt.title('STFT Data')
+plt.colorbar()
+qlt.subpanel_label(plt.gca(), 'A')
 
-shade = [0.7, 0.7, 0.7]
-xf = -0.03
-plt.figure(figsize=(12, 9))
-plt.subplots_adjust(wspace=0.3, hspace=0.5, right=0.975, left=0.1)
+plt.subplot(412)
+plt.pcolormesh(time, np.arange(6), design.design_matrix[:, ::-1].T, cmap='RdBu_r')
+plt.yticks(np.arange(6), model.contrast_names[::-1])
+plt.xticks(np.arange(18)*60, np.arange(18))
+plt.title('Design Matrix')
+plt.colorbar()
+qlt.subpanel_label(plt.gca(), 'B')
 
-plt.subplot(3, 3, 1)
-plt.plot(f, extras4[0].copes[1, :, 0], 'k')
-subpanel_label(plt.gca(), 'A', xf=xf); decorate(plt.gca());
-plt.ylabel('Parameter Estimate')
-plt.title('Task Condition\n', fontsize=16)
+regs = np.arange(3)
+fit = np.dot(design.design_matrix[:, regs], model.betas[regs, :, chan])
+plt.subplot(413)
+plt.xticks(np.arange(18)*60, np.arange(18))
+plt.ylabel('Frequency (Hz)')
+plt.pcolormesh(time, freq_vect, fit.T, vmin=vmin, vmax=vmax, cmap='magma_r')
+plt.title('Mean + Covariate Regressors')
+plt.colorbar()
+qlt.subpanel_label(plt.gca(), 'C')
 
-ts = extras4[0].get_tstats(sigma_hat='auto')
-plt.subplot(3,3,4)
-clu, cstat = P1.get_sig_clusters(extras4[2], 99)
-for c in range(len(cstat)):
-    inds = np.where(clu==c+1)[0]
-    plt.axvspan(f[inds[0]], f[inds[-1]], facecolor=shade, alpha=0.5)
-plt.plot(f, ts[1, :, 0], 'k')
-subpanel_label(plt.gca(), 'B', xf=xf); decorate(plt.gca())
-plt.ylabel('t-statistic')
+regs = np.arange(3)+3
+fit = np.dot(design.design_matrix[:, regs], model.betas[regs, :, chan])
+plt.subplot(414)
+plt.xticks(np.arange(18)*60, np.arange(18))
+plt.ylabel('Frequency (Hz)')
+plt.xlabel('Time (mins)')
+plt.pcolormesh(time, freq_vect, fit.T, vmin=vmin, vmax=0.001, cmap='magma_r')
+plt.title('Confound Regressors Only')
+plt.colorbar()
+qlt.subpanel_label(plt.gca(), 'D')
 
-plt.subplot(3,3,7)
-proj, ll =  extras4[0].project_range(1)
-plt.plot(f, proj[:, :, 0].T)
-subpanel_label(plt.gca(), 'C', xf=xf); decorate(plt.gca())
-plt.legend(['Eyes Closed', 'Eyes Open'], frameon=False)
-for c in range(len(cstat)):
-    inds = np.where(clu==c+1)[0]
-    plt.axvspan(f[inds[0]], f[inds[-1]], facecolor=shade, alpha=0.5, label=None)
-plt.xlabel('Frequency (Hz)')
-plt.ylabel('Power (a.u.)')
-
-plt.subplot(3, 3, 2)
-plt.plot(f, extras4[0].copes[2, :, 0], 'k')
-subpanel_label(plt.gca(), 'D', xf=xf); decorate(plt.gca())
-plt.title('Blinking Confound\n', fontsize=16)
-
-plt.subplot(3,3,5)
-clu, cstat = P2.get_sig_clusters(extras4[2], 99)
-for c in range(len(cstat)):
-    inds = np.where(clu==c+1)[0]
-    plt.axvspan(f[inds[0]], f[inds[-1]], facecolor=shade, alpha=0.5)
-plt.plot(f, ts[2, :, 0], 'k')
-subpanel_label(plt.gca(), 'E', xf=xf); decorate(plt.gca())
-
-plt.subplot(3,3,8)
-proj, ll =  extras4[0].project_range(2)
-plt.plot(f, proj[:, :, 0].T)
-plt.legend(['Blinking', 'No Blinking'], frameon=False)
-for c in range(len(cstat)):
-    inds = np.where(clu==c+1)[0]
-    plt.axvspan(f[inds[0]], f[inds[-1]], facecolor=shade, alpha=0.5)
-subpanel_label(plt.gca(), 'F', xf=xf); decorate(plt.gca())
-plt.xlabel('Frequency (Hz)')
-
-plt.subplot(3,3,6)
-plt.plot(f, extras1[0].copes[0, :, 0])
-plt.plot(f, extras4[0].copes[0, :, 0])
-subpanel_label(plt.gca(), 'G', xf=xf); decorate(plt.gca())
-plt.xlabel('Frequency (Hz)')
-plt.ylabel('Power (a.u.)')
-plt.title('Mean Spectrum from\nboth models', fontsize=16)
-
-fout = os.path.join(figbase, 'EEG_Lemon_singlechannel_stats_ica.png')
+fout = os.path.join(outdir, 'sub-{subj_id}_single-channel_glm-singlechanTF.png'.format(subj_id=subj))
 plt.savefig(fout, dpi=300, transparent=True)
-
