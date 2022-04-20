@@ -98,6 +98,16 @@ def run_first_level(fname, outdir):
             'Eyes Open>Closed': task}
     cons = {'Bad Segments': bads, 'V-EOG': veog, 'H-EOG': heog}
     fs = raw.info['sfreq']
+
+    # Null model
+    freq_vect0, copes0, varcopes0, extras0 = sails.stft.glm_periodogram(XX, axis=0,
+                                                                    nperseg=int(fs*2),
+                                                                    fmin=0.1, fmax=100,
+                                                                    fs=fs, mode='magnitude',
+                                                                    fit_method='glmtools')
+    model0, design0, data0 = extras0
+
+    # Full model
     freq_vect, copes, varcopes, extras = sails.stft.glm_periodogram(XX, axis=0,
                                                                     covariates=covs,
                                                                     confounds=cons,
@@ -106,6 +116,11 @@ def run_first_level(fname, outdir):
                                                                     fs=fs, mode='magnitude',
                                                                     fit_method='glmtools')
     model, design, data = extras
+
+    print('----')
+    print('Null Model AIC : {0} - R2 : {1}'.format(model0.aic.mean(), model0.r_square.mean()))
+    print('Full Model AIC : {0} - R2 : {1}'.format(model.aic.mean(), model.r_square.mean()))
+
     data.info['dim_labels'] = ['Windows', 'Frequencies', 'Sensors']
 
     hdfname = os.path.join(outdir, '{subj_id}_glm-data.hdf5'.format(subj_id=subj_id))
@@ -114,6 +129,7 @@ def run_first_level(fname, outdir):
         os.remove(hdfname)
     with h5py.File(hdfname, 'w') as F:
         model.to_hdf5(F.create_group('model'))
+        model0.to_hdf5(F.create_group('null_model'))
         design.to_hdf5(F.create_group('design'))
         data.to_hdf5(F.create_group('data'))
         F.create_dataset('freq_vect', data=freq_vect)
@@ -132,6 +148,7 @@ proc_outputs = sorted(glob.glob(os.path.join(proc_outdir, 'sub-*_preproc_raw.fif
 
 glm_outdir = '/ohba/pi/knobre/ajquinn/lemon/glm_data/'
 
+eye
 
 for fname in proc_outputs:
     try:
@@ -161,8 +178,11 @@ scandur = []
 num_blinks = []
 
 first_level = []
+first_level_null = []
 for idx, fname in enumerate(fnames):
     print('{0}/{1} - {2}'.format(idx, len(fnames), fname.split('/')[-1]))
+    model = obj_from_hdf5file(fname, 'null_model')
+    first_level_null.append(model.copes[None, :, :, :])
     model = obj_from_hdf5file(fname, 'model')
     first_level.append(model.copes[None, :, :, :])
     s_id = fname.split('/')[-1].split('_')[0][4:]
@@ -189,3 +209,11 @@ outf = os.path.join(glm_outdir, 'lemon_eeg_sensorglm_groupdata.hdf5')
 with h5py.File(outf, 'w') as F:
     group_data.to_hdf5(F.create_group('data'))
 
+first_level_null = np.concatenate(first_level_null, axis=0)
+group_data = glm.data.TrialGLMData(data=first_level_null, subj_id=subj_id,
+                                   subj=subj, task=task, age=age, num_blinks=num_blinks,
+                                   sex=sex, scandur=scandur)
+
+outf = os.path.join(glm_outdir, 'lemon_eeg_sensorglm_groupdata_null.hdf5')
+with h5py.File(outf, 'w') as F:
+    group_data.to_hdf5(F.create_group('data'))
