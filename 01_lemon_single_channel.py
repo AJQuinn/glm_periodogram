@@ -89,6 +89,12 @@ inds = np.arange(247000, 396000) + fs*60  # about a minute of eyes open
 inds = Ellipsis
 sensor = 'Cz'
 XX = stats.zscore(dataset_noica['raw'].get_data(picks=sensor)[:, inds].T, axis=0)
+
+f, copes, varcopes, extras0 = sails.stft.glm_periodogram(XX, axis=0,
+                                                         nperseg=fs*2,
+                                                         fmin=0.1, fmax=45,
+                                                         fs=fs, mode='magnitude',
+                                                         fit_method='glmtools')
 f, copes, varcopes, extras1 = sails.stft.glm_periodogram(XX, axis=0,
                                                          covariates=covs,
                                                          nperseg=fs*2,
@@ -223,9 +229,9 @@ fx, ftl, ft = qlt.prep_scaled_freq(0.5, f)
 #%% ------------------------------------------------------------
 # Make figure 2
 
-wlagX = sails.stft.apply_sliding_window(XX[:, 0],**config.embedding_args)
+wlagX = sails.stft.apply_sliding_window(XX[:, 0],**config.sliding_window_args)
 config.window = np.ones_like(config.window)
-lagX = sails.stft.apply_sliding_window(XX[:, 0],**config.embedding_args)
+lagX = sails.stft.apply_sliding_window(XX[:, 0],**config.sliding_window_args)
 
 plt.figure(figsize=(16, 9))
 
