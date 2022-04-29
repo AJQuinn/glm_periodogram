@@ -65,7 +65,7 @@ def lemon_ica(dataset, userargs, logfile=None):
 
    # Save components as channels in raw object
     src = dataset['ica'].get_sources(fraw).get_data()
-    veog = src[eog_indices[np.argmax(eog_scores[eog_indices])], :]
+    veog = src[eog_indices[np.argmax(np.abs(eog_scores[eog_indices]))], :]
     heog = src[heog_indices[0], :]
 
     info = mne.create_info(['ICA-VEOG', 'ICA-HEOG'],
@@ -237,6 +237,27 @@ def find_eog_events(raw, event_id=998):
     return eog_events
 
 
+def make_eog_regressors(raw):
+
+    heog = raw.copy().filter(l_freq=1, h_freq=10, picks='ICA-HEOG').get_data(picks='ICA-HEOG')
+    heog = heog[0, :]
+
+    heog = stats.zscore(heog).reshape(-1,1)
+    bads = sails.utils.detect_artefacts(heog, axis=0, reject_mode='segments', segment_len=2500)
+    heog[bads] = np.median(heog)
+
+    gmm = GaussianMixture(2, n_init=5).fit(heog)
+    heog = gmm.predict(heog) == np.argmax(gmm.means_)
+
+    veog = raw.copy().filter(l_freq=1, h_freq=10, picks='ICA-VEOG').get_data(picks='ICA-VEOG')
+    veog = veog[0, :]
+
+    veog = stats.zscore(veog).reshape(-1,1)
+    bads = sails.utils.detect_artefacts(veog, axis=0, reject_mode='segments', segment_len=2500)
+    veog[bads] = np.median(veog)
+
+    gmm = GaussianMixture(2, n_init=5).fit(veog)
+    veog = gmm.predict(veog) == np.argmax(gmm.means_)
 
 
 def lemon_make_blinks_regressor(raw, corr_thresh=0.75, figpath=None):

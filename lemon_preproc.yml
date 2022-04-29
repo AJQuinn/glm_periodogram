@@ -9,6 +9,7 @@ preproc:
   - bad_channels:                   {picks: 'eeg'}
   - annotate_flat:                  None
   - resample:                       {sfreq: 250}
+  - bad_segments:                   {segment_len: 2500, picks: 'eog'}
   - lemon_ica:                      {n_components: 30, picks: eeg}
   - bad_segments:                   {segment_len: 500, picks: 'eeg'}
   - bad_segments:                   {segment_len: 500, picks: 'eeg', mode: 'diff'}
