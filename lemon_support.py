@@ -213,8 +213,35 @@ def lemon_find_heog(raw, ica):
     return [heog]
 
 
+def find_eog_events(raw, event_id=998):
+    eog = raw.copy().filter(l_freq=1, h_freq=10, picks='eog').get_data(picks='VEOG')
+    eog = eog[0, :]
+    # 10 seconds hopefully long enough to avoid rejecting real blinks - only
+    # want to catch HUGE artefacts here.
+    bads = sails.utils.detect_artefacts(eog, axis=0, reject_mode='segments', segment_len=2500)
+    eog[bads] = np.median(eog)
+
+    if np.abs(np.max(eog)) > np.abs(np.min(eog)):
+        eog_events, _ = mne.preprocessing.eog.peak_finder(eog,
+                                                          None, extrema=1)
+    else:
+        eog_events, _ = mne.preprocessing.eog.peak_finder(eog,
+                                                          None, extrema=-1)
+
+    n_events = len(eog_events)
+    #logger.info(f'Number of EOG events detected: {n_events}')
+    eog_events = np.array([eog_events + raw.first_samp,
+                           np.zeros(n_events, int),
+                           event_id * np.ones(n_events, int)]).T
+
+    return eog_events
+
+
+
+
 def lemon_make_blinks_regressor(raw, corr_thresh=0.75, figpath=None):
-    eog_events = mne.preprocessing.find_eog_events(raw, l_freq=1, h_freq=10)
+    #eog_events = mne.preprocessing.find_eog_events(raw, l_freq=1, h_freq=10)
+    eog_events = find_eog_events(raw)
     logger.info('found {0} blinks'.format(eog_events.shape[0]))
 
     # Correct for cropping first 10 seconds - not sure why this is necessary?!
