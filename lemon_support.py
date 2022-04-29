@@ -36,6 +36,24 @@ def lemon_set_channel_montage(dataset, userargs):
     return dataset
 
 
+def lemon_create_heog(dataset, userargs):
+    logger.info('LEMON Stage - Create HEOG from F7 and F8')
+    logger.info('userargs: {0}'.format(str(userargs)))
+
+    F7 = dataset['raw'].get_data(picks='F7')
+    F8 = dataset['raw'].get_data(picks='F8')
+
+    heog = F7-F8
+
+    info = mne.create_info(['HEOG'],
+                           dataset['raw'].info['sfreq'],
+                           ['eog'])
+    eog_raw = mne.io.RawArray(heog, info)
+    dataset['raw'].add_channels([eog_raw], force_update_info=True)
+
+    return dataset
+
+
 def lemon_ica(dataset, userargs, logfile=None):
     logger.info('LEMON Stage - custom EEG ICA function')
     logger.info('userargs: {0}'.format(str(userargs)))
@@ -53,19 +71,24 @@ def lemon_ica(dataset, userargs, logfile=None):
 
     logger.info('starting EOG autoreject')
     # Find and exclude VEOG
-    eog_indices, eog_scores = dataset['ica'].find_bads_eog(dataset['raw'])
-    dataset['eog_scores'] = eog_scores
-    dataset['ica'].exclude.extend(eog_indices)
-    logger.info('Marking {0} ICs as EOG'.format(len(dataset['ica'].exclude)))
+    #eog_indices, eog_scores = dataset['ica'].find_bads_eog(dataset['raw'])
+    veog_indices, eog_scores =  dataset['ica'].find_bads_eog(dataset['raw'], 'VEOG')
+    dataset['veog_scores'] = eog_scores
+    dataset['ica'].exclude.extend(veog_indices)
+    logger.info('Marking {0} ICs as EOG {1}'.format(len(dataset['ica'].exclude),
+                                                    veog_indices))
 
     # Find and exclude HEOG
-    heog_indices = lemon_find_heog(fraw, ica)
+    #heog_indices = lemon_find_heog(fraw, ica)
+    heog_indices, eog_scores =  dataset['ica'].find_bads_eog(dataset['raw'], 'HEOG')
+    dataset['heog_scores'] = eog_scores
     dataset['ica'].exclude.extend(heog_indices)
-    logger.info('Marking {0} ICs as HEOG'.format(len(heog_indices)))
+    logger.info('Marking {0} ICs as HEOG {1}'.format(len(heog_indices),
+                                                     heog_indices))
 
    # Save components as channels in raw object
     src = dataset['ica'].get_sources(fraw).get_data()
-    veog = src[eog_indices[np.argmax(np.abs(eog_scores[eog_indices]))], :]
+    veog = src[veog_indices[0], :]
     heog = src[heog_indices[0], :]
 
     info = mne.create_info(['ICA-VEOG', 'ICA-HEOG'],

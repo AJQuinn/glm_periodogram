@@ -14,10 +14,11 @@ from lemon_support import (lemon_make_blinks_regressor,
                            lemon_make_task_regressor,
                            lemon_make_bads_regressor,
                            lemon_set_channel_montage,
+                           lemon_create_heog,
                            lemon_ica, lemon_check_ica)
 from glm_config import cfg
 
-extra_funcs = [lemon_set_channel_montage, lemon_ica]
+extra_funcs = [lemon_set_channel_montage, lemon_create_heog, lemon_ica]
 
 treename = os.path.join('lemon.tree')
 lemon = osl.utils.StudyTree(treename, cfg['lemon_raw'])
