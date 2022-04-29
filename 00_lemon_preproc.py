@@ -179,12 +179,24 @@ num_blinks = []
 
 first_level = []
 first_level_null = []
+r2 = []
+r2_null = []
+aic = []
+aic_null = []
 for idx, fname in enumerate(fnames):
     print('{0}/{1} - {2}'.format(idx, len(fnames), fname.split('/')[-1]))
     model = obj_from_hdf5file(fname, 'null_model')
+    design = obj_from_hdf5file(fname, 'design')
+    model.design_matrix = design.design_matrix
     first_level_null.append(model.copes[None, :, :, :])
+    r2_null.append(model.r_square.mean())
+    aic_null.append(model.aic.mean())
     model = obj_from_hdf5file(fname, 'model')
+    model.design_matrix = design.design_matrix
     first_level.append(model.copes[None, :, :, :])
+    r2.append(model.r_square.mean())
+    aic.append(model.aic.mean())
+
     s_id = fname.split('/')[-1].split('_')[0][4:]
     subj.append(np.where(allsubj == s_id)[0][0])
     subj_id.append(s_id)
@@ -208,6 +220,8 @@ group_data = glm.data.TrialGLMData(data=first_level, subj_id=subj_id,
 outf = os.path.join(glm_outdir, 'lemon_eeg_sensorglm_groupdata.hdf5')
 with h5py.File(outf, 'w') as F:
     group_data.to_hdf5(F.create_group('data'))
+    F.create_dataset('aic', data=aic)
+    F.create_dataset('r2', data=r2)
 
 first_level_null = np.concatenate(first_level_null, axis=0)
 group_data = glm.data.TrialGLMData(data=first_level_null, subj_id=subj_id,
@@ -217,3 +231,5 @@ group_data = glm.data.TrialGLMData(data=first_level_null, subj_id=subj_id,
 outf = os.path.join(glm_outdir, 'lemon_eeg_sensorglm_groupdata_null.hdf5')
 with h5py.File(outf, 'w') as F:
     group_data.to_hdf5(F.create_group('data'))
+    F.create_dataset('aic', data=aic_null)
+    F.create_dataset('r2', data=r2_null)
