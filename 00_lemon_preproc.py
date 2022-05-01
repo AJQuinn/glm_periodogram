@@ -8,7 +8,9 @@ import numpy as np
 import h5py
 import pandas as pd
 from scipy import stats
-import glmtools as glm
+from anamnesis import obj_from_hdf5file
+import matplotlib.pyplot as plt
+
 
 from lemon_support import (lemon_make_blinks_regressor,
                            lemon_make_task_regressor,
@@ -17,6 +19,13 @@ from lemon_support import (lemon_make_blinks_regressor,
                            lemon_create_heog,
                            lemon_ica, lemon_check_ica)
 from glm_config import cfg
+
+import sys
+sys.path.insert(0, '/home/ajquinn/src/glm')
+import glmtools as glm
+
+sys.path.append('/home/ajquinn/src/qlt/')
+import qlt
 
 extra_funcs = [lemon_set_channel_montage, lemon_create_heog, lemon_ica]
 
@@ -56,11 +65,20 @@ def get_eeg_data(raw):
     return Y
 
 
+def make_eog_regressor(eog):
+    bads = sails.utils.detect_artefacts(eog, axis=0, reject_mode='segments', segment_len=2500)
+    eog = eog**2
+    thresh = np.percentile(eog[bads==False], 95)
+    eog = (eog>thresh).astype(float)
+    eog[bads] = 0
+    return eog
+
+
 def run_first_level(fname, outdir):
     runname = fname.split('/')[-1].split('.')[0]
     print('processing : {0}'.format(runname))
 
-    subj_id = osl.preprocessing.find_run_id(fname)
+    subj_id = osl.utils.find_run_id(fname)
 
     raw = mne.io.read_raw_fif(fname, preload=True)
 
@@ -77,13 +95,15 @@ def run_first_level(fname, outdir):
     quick_plot_eogs(raw, figpath=fout)
 
     # No reason to square if binarising?
-    veog = raw.get_data(picks='ICA-VEOG')[0, :]**2
-    thresh = np.percentile(veog, 95)
-    veog = (veog>thresh).astype(float)
+    #veog = raw.get_data(picks='ICA-VEOG')[0, :]**2
+    #thresh = np.percentile(veog, 95)
+    #veog = (veog>thresh).astype(float)
+    veog = make_eog_regressor(raw.get_data(picks='ICA-VEOG')[0, :])
+    heog = make_eog_regressor(raw.get_data(picks='ICA-HEOG')[0, :])
 
-    heog = raw.get_data(picks='ICA-HEOG')[0, :]**2
-    thresh = np.percentile(heog, 95)
-    heog = (heog>thresh).astype(float)
+    #heog = raw.get_data(picks='ICA-HEOG')[0, :]**2
+    #thresh = np.percentile(heog, 95)
+    #heog = (heog>thresh).astype(float)
 
     # Make task regressor
     task = lemon_make_task_regressor({'raw': raw})
@@ -144,6 +164,30 @@ def run_first_level(fname, outdir):
     design.plot_summary(show=False, savepath=fout)
     fout = os.path.join(outdir, '{subj_id}_glm-efficiency.png'.format(subj_id=subj_id))
     design.plot_efficiency(show=False, savepath=fout)
+
+    quick_plot_firstlevel(hdfname, raw.filenames[0])
+
+
+def quick_plot_firstlevel(hdfname, rawpath):
+
+    raw = mne.io.read_raw_fif(rawpath).pick_types(eeg=True)
+
+    model = obj_from_hdf5file(hdfname, 'model')	
+    freq_vect = h5py.File(hdfname, 'r')['freq_vect'][()]
+
+    tstat_args = {'hat_factor': 5e-3, 'varcope_smoothing': 'medfilt', 'window_size': 15, 'smooth_dims': 1}
+    ts = model.get_tstats(**tstat_args)
+
+    plt.figure(figsize=(16, 9))
+    for ii in range(6):
+        ind = 4 if ii < 3 else 7
+        ax = plt.subplot(4, 3, ii+ind)
+        qlt.plot_joint_spectrum(ax, ts[ii, :, :], raw, xvect=freq_vect, freqs=[1, 9], base=0.5, topo_scale=None)
+
+    outf = hdfname.replace('.hdf5', '_glmsummary.png')
+    plt.savefig(outf, dpi=300)
+    plt.close('all')
+
 
 
 proc_outdir = '/ohba/pi/knobre/ajquinn/lemon/processed_data/'
