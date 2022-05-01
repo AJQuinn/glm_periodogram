@@ -91,6 +91,8 @@ def lemon_ica(dataset, userargs, logfile=None):
     veog = src[veog_indices[0], :]
     heog = src[heog_indices[0], :]
 
+    ica.labels_['top'] = [veog_indices[0], heog_indices[0]]
+
     info = mne.create_info(['ICA-VEOG', 'ICA-HEOG'],
                            dataset['raw'].info['sfreq'],
                            ['misc', 'misc'])
@@ -337,3 +339,49 @@ def lemon_make_bads_regressor(dataset):
             bads[start:start+duration] = 1
     return bads
 
+
+def quick_plot_eogs(raw, ica, figpath=None):
+
+    inds = np.arange(250*45, 250*300)
+
+    plt.figure(figsize=(24, 9))
+    veog = raw.get_data(picks='VEOG')[0, :]
+    ica_veog = raw.get_data(picks='ICA-VEOG')[0, :]
+    plt.axes([0.05, 0.55, 0.125, 0.4])
+    comp = ica.get_components()[:, ica.labels_['top'][0]]
+    mne.viz.plot_topomap(comp, ica.info)
+    plt.axes([0.2, 0.55, 0.475, 0.4])
+    plt.plot(stats.zscore(veog[inds]))
+    plt.plot(stats.zscore(ica_veog[inds])-5)
+    plt.legend(['VEOGs', 'ICA-VEOG'], frameon=False)
+    plt.xlim(0, 250*180)
+    plt.axes([0.725, 0.55, 0.25, 0.4])
+    plt.plot(veog, ica_veog, '.k')
+    veog = raw.get_data(picks='VEOG', reject_by_annotation='omit')[0, :]
+    ica_veog = raw.get_data(picks='ICA-VEOG', reject_by_annotation='omit')[0, :]
+    plt.plot(veog, ica_veog, '.r')
+    plt.xlabel('VEOG'); plt.ylabel('ICA-VEOG')
+    plt.plot(veog, ica_veog, '.r')
+    plt.legend(['Samples', 'Clean Samples'], frameon=False)
+    plt.title('Correlation : r = {0}'.format(np.corrcoef(veog, ica_veog)[0,  1]))
+
+    heog = raw.get_data(picks='HEOG')[0, :]
+    ica_heog = raw.get_data(picks='ICA-HEOG')[0, :]
+    plt.axes([0.05, 0.05, 0.125, 0.4])
+    comp = ica.get_components()[:, ica.labels_['top'][1]]
+    mne.viz.plot_topomap(comp, ica.info)
+    plt.axes([0.2, 0.05, 0.475, 0.4])
+    plt.plot(stats.zscore(heog[inds]))
+    plt.plot(stats.zscore(ica_heog[inds])-5)
+    plt.legend(['HEOGs', 'ICA-HEOG'], frameon=False)
+    plt.xlim(0, 250*180)
+    plt.axes([0.725, 0.05, 0.25, 0.4])
+    plt.plot(heog, ica_heog, '.k')
+    heog = raw.get_data(picks='HEOG', reject_by_annotation='omit')[0, :]
+    ica_heog = raw.get_data(picks='ICA-HEOG', reject_by_annotation='omit')[0, :]
+    plt.plot(heog, ica_heog, '.r')
+    plt.legend(['Samples', 'Clean Samples'], frameon=False)
+    plt.xlabel('HEOG'); plt.ylabel('ICA-HEOG')
+    plt.title('Correlation : r = {0}'.format(np.corrcoef(heog, ica_heog)[0,  1]))
+
+    plt.savefig(figpath, transparent=False, dpi=300)

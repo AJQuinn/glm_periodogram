@@ -73,6 +73,8 @@ def run_first_level(fname, outdir):
     # Make blink regressor
     fout = os.path.join(outdir, '{subj_id}_blink-summary.png'.format(subj_id=subj_id))
     blink_vect, numblinks, evoked_blink = lemon_make_blinks_regressor(raw, figpath=fout)
+    fout = os.path.join(outdir, '{subj_id}_icaeog-summary.png'.format(subj_id=subj_id))
+    quick_plot_eogs(raw, figpath=fout)
 
     # No reason to square if binarising?
     veog = raw.get_data(picks='ICA-VEOG')[0, :]**2
