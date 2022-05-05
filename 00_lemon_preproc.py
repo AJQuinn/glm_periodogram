@@ -95,21 +95,15 @@ def run_first_level(fname, outdir):
     quick_plot_eogs(raw, figpath=fout)
 
     # No reason to square if binarising?
-    #veog = raw.get_data(picks='ICA-VEOG')[0, :]**2
-    #thresh = np.percentile(veog, 95)
-    #veog = (veog>thresh).astype(float)
     veog = make_eog_regressor(raw.get_data(picks='ICA-VEOG')[0, :])
     heog = make_eog_regressor(raw.get_data(picks='ICA-HEOG')[0, :])
-
-    #heog = raw.get_data(picks='ICA-HEOG')[0, :]**2
-    #thresh = np.percentile(heog, 95)
-    #heog = (heog>thresh).astype(float)
 
     # Make task regressor
     task = lemon_make_task_regressor({'raw': raw})
 
     # Make bad-segments regressor
-    bads = lemon_make_bads_regressor({'raw': raw})
+    bads_raw = lemon_make_bads_regressor(dataset, mode='raw')
+    bads_diff = lemon_make_bads_regressor(dataset, mode='diff')
 
     # Get data
     XX = get_eeg_data(raw).T
@@ -117,28 +111,44 @@ def run_first_level(fname, outdir):
     print(XX.shape)
 
     # Run GLM-Periodogram
-    covs = {'Linear Trend': np.linspace(0, 1, raw.n_times),
-            'Eyes Open>Closed': task}
-    cons = {'Bad Segments': bads, 'V-EOG': veog, 'H-EOG': heog}
+    #covs = {'Linear Trend': np.linspace(0, 1, raw.n_times),
+    #        'Eyes Open>Closed': task}
+    #cons = {'Bad Segments': bads, 'V-EOG': veog, 'H-EOG': heog}
+    conds = {'Eyes Open': task == 1, 'Eyes Closed': task == -1}
+    covs = {'Linear Trend': np.linspace(0, 1, dataset['raw'].n_times)}
+    confs = {'Bad Segments': bads_raw,
+             'Bad Segments Diff': bads_diff,
+             'V-EOG': veog, 'H-EOG': heog}
+    conts = [{'name': 'Mean', 'values':{'Eyes Open': 0.5, 'Eyes Closed': 0.5}},
+             {'name': 'Open < Closed', 'values':{'Eyes Open': 1, 'Eyes Closed': -1}}]
+
     fs = raw.info['sfreq']
 
     # Null model
     freq_vect0, copes0, varcopes0, extras0 = sails.stft.glm_periodogram(XX, axis=0,
+                                                                    fit_constant=False,
+                                                                    conditions=conds,
                                                                     nperseg=int(fs*2),
                                                                     fmin=0.1, fmax=100,
                                                                     fs=fs, mode='magnitude',
                                                                     fit_method='glmtools')
     model0, design0, data0 = extras0
+    print(model0.contrast_names)
 
     # Full model
     freq_vect, copes, varcopes, extras = sails.stft.glm_periodogram(XX, axis=0,
+                                                                    fit_constant=False,
+                                                                    conditions=conds,
                                                                     covariates=covs,
-                                                                    confounds=cons,
+                                                                    confounds=confs,
+                                                                    contrasts=conts,
                                                                     nperseg=int(fs*2),
                                                                     fmin=0.1, fmax=100,
                                                                     fs=fs, mode='magnitude',
                                                                     fit_method='glmtools')
     model, design, data = extras
+    print(model.contrast_names)
+    data.info['dim_labels'] = ['Windows', 'Frequencies', 'Sensors']
 
     print('----')
     print('Null Model AIC : {0} - R2 : {1}'.format(model0.aic.mean(), model0.r_square.mean()))
@@ -177,11 +187,12 @@ def quick_plot_firstlevel(hdfname, rawpath):
 
     tstat_args = {'hat_factor': 5e-3, 'varcope_smoothing': 'medfilt', 'window_size': 15, 'smooth_dims': 1}
     ts = model.get_tstats(**tstat_args)
+    ts = model.copes
 
     plt.figure(figsize=(16, 9))
-    for ii in range(6):
-        ind = 4 if ii < 3 else 7
-        ax = plt.subplot(4, 3, ii+ind)
+    for ii in range(9):
+        ind = 6 if ii < 5 else 11
+        ax = plt.subplot(4, 5, ii+ind)
         qlt.plot_joint_spectrum(ax, ts[ii, :, :], raw, xvect=freq_vect, freqs=[1, 9], base=0.5, topo_scale=None)
 
     outf = hdfname.replace('.hdf5', '_glmsummary.png')
