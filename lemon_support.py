@@ -336,10 +336,10 @@ def lemon_make_blinks_regressor(raw, corr_thresh=0.75, figpath=None):
     return blink_covariate, eog_events.shape[0], clean.average(picks='eog')
 
 
-def lemon_make_bads_regressor(dataset):
+def lemon_make_bads_regressor(dataset, mode='raw'):
     bads = np.zeros((dataset['raw'].n_times,))
     for an in dataset['raw'].annotations:
-        if an['description'].startswith('bad'):
+        if an['description'].startswith('bad') and an['description'].endswith(mode):
             start = dataset['raw'].time_as_index(an['onset'])[0] - dataset['raw'].first_samp
             duration = int(an['duration'] * dataset['raw'].info['sfreq'])
             bads[start:start+duration] = 1
@@ -391,3 +391,44 @@ def quick_plot_eogs(raw, ica, figpath=None):
     plt.title('Correlation : r = {0}'.format(np.corrcoef(heog, ica_heog)[0,  1]))
 
     plt.savefig(figpath, transparent=False, dpi=300)
+
+
+def plot_design(ax, design_matrix, regressor_names):
+    num_observations, num_regressors = design_matrix.shape
+    vm = np.max((design_matrix.min(), design_matrix.max()))
+    cax = ax.pcolor(design_matrix, cmap=plt.cm.coolwarm,
+                    vmin=-vm, vmax=vm)
+    ax.set_xlabel('Regressors')
+    tks = np.arange(len(regressor_names)+1)
+    ax.set_xticks(tks+0.5)
+    ax.set_xticklabels(tks)
+
+    tkstep = 2
+    tks = np.arange(0, design_matrix.shape[0], tkstep)
+
+    for tag in ['top', 'right', 'left', 'bottom']:
+        ax.spines[tag].set_visible(False)
+
+    summary_lines = True
+    new_cols = 0
+    for ii in range(num_regressors):
+        if summary_lines:
+            x = design_matrix[:, ii]
+            if np.abs(np.diff(x)).sum() != 0:
+                y = (0.5*x) / (np.max(np.abs(x)) * 1.1)
+            else:
+                # Constant regressor
+                y = np.ones_like(x) * .45
+            if num_observations > 50:
+                ax.plot(y+ii+new_cols+0.5, np.arange(0, 0+num_observations)+.5, 'k')
+            else:
+                yy = y+ii+new_cols+0.5
+                print('{} - {} - {}'.format(yy.min(), yy.mean(), yy.max()))
+                ax.plot(y+ii+new_cols+0.5, np.arange(0, 0+num_observations)+.5,
+                        'k|', markersize=5)
+
+        # Add white dividing line
+        if ii < num_regressors-1:
+            ax.plot([ii+1+new_cols, ii+1+new_cols], [0, 0+num_observations],
+                    'w', linewidth=4)
+    return cax
