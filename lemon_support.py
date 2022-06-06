@@ -1,3 +1,4 @@
+
 import os
 import osl
 import numpy as np
@@ -73,6 +74,8 @@ def lemon_ica(dataset, userargs, logfile=None):
     # Find and exclude VEOG
     #eog_indices, eog_scores = dataset['ica'].find_bads_eog(dataset['raw'])
     veog_indices, eog_scores =  dataset['ica'].find_bads_eog(dataset['raw'], 'VEOG')
+    if len(heog_indices) == 0:
+        veog_indices, eog_scores =  dataset['ica'].find_bads_eog(dataset['raw'], 'VEOG', threshold=2)
     dataset['veog_scores'] = eog_scores
     dataset['ica'].exclude.extend(veog_indices)
     logger.info('Marking {0} ICs as EOG {1}'.format(len(dataset['ica'].exclude),
@@ -81,6 +84,8 @@ def lemon_ica(dataset, userargs, logfile=None):
     # Find and exclude HEOG
     #heog_indices = lemon_find_heog(fraw, ica)
     heog_indices, eog_scores =  dataset['ica'].find_bads_eog(dataset['raw'], 'HEOG')
+    if len(heog_indices) == 0:
+        heog_indices, eog_scores =  dataset['ica'].find_bads_eog(dataset['raw'], 'HEOG', threshold=2)
     dataset['heog_scores'] = eog_scores
     dataset['ica'].exclude.extend(heog_indices)
     logger.info('Marking {0} ICs as HEOG {1}'.format(len(heog_indices),
@@ -136,7 +141,7 @@ def camcan_ica(dataset, userargs):
     # Find and exclude HEOG - pretty much the same as VEOG in MEG
     heog_indices, heog_scores = dataset['ica'].find_bads_eog(fraw, ch_name='EOG061')
     if len(heog_indices) > 0:
-    	dataset['ica'].exclude.extend(heog_indices)
+        dataset['ica'].exclude.extend(heog_indices)
     logger.info('ica.find_bads_eog marking {0} as H-EOG'.format(heog_indices))
 
     # Find and exclude VEOG
