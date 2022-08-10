@@ -4,7 +4,7 @@ import osl
 import numpy as np
 import mne
 import sails
-from scipy import io, ndimage
+from scipy import io, ndimage, stats
 import matplotlib.pyplot as plt
 
 from glm_config import cfg
@@ -362,7 +362,7 @@ def quick_plot_eogs(raw, ica, figpath=None):
     mne.viz.plot_topomap(comp, ica.info)
     plt.axes([0.2, 0.55, 0.475, 0.4])
     plt.plot(stats.zscore(veog[inds]))
-    plt.plot(stats.zscore(ica_veog[inds])-5)
+    plt.plot(stats.zscore(ica_veog[inds])-10)
     plt.legend(['VEOGs', 'ICA-VEOG'], frameon=False)
     plt.xlim(0, 250*180)
     plt.axes([0.725, 0.55, 0.25, 0.4])
