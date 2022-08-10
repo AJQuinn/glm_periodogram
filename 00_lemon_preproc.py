@@ -40,8 +40,7 @@ proc_outdir = '/ohba/pi/knobre/ajquinn/lemon/processed_data/'
 
 #dataset = osl.preprocessing.run_proc_chain(inputs[10], config, outdir=proc_outdir, extra_funcs=extra_funcs)
 
-#goods = osl.preprocessing.run_proc_batch(config, inputs[33:], proc_outdir, overwrite=True, nprocesses=3, extra_funcs=extra_funcs)
-
+goods = osl.preprocessing.run_proc_batch(config, inputs[33:], proc_outdir, overwrite=True, nprocesses=3, extra_funcs=extra_funcs)
 
 #%% ---------------------------------------------------
 

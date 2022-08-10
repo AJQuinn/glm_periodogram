@@ -10,6 +10,7 @@ import numpy as np
 import glmtools as glm
 from copy import deepcopy
 from scipy import io, ndimage, stats
+
 import matplotlib.pyplot as plt
 from matplotlib.patches import ConnectionPatch
 
@@ -54,6 +55,8 @@ plt.savefig(fout, dpi=300, transparent=True)
 fout = os.path.join(outdir, 'sub-{subj_id}_proc-full_icatopos.png'.format(subj_id=subj_id))
 lemon_check_ica(dataset, fout)
 
+dataset['raw'] = mne.preprocessing.compute_current_source_density(dataset['raw'])
+
 #%% ----------------------------------------------------
 
 # GLM-Prep
@@ -83,10 +86,13 @@ bads_diff = lemon_make_bads_regressor(dataset, mode='diff')
 # GLM
 
 raw = dataset['raw']
-rawref = dataset['raw'].copy().pick_types(eeg=True)
+rawref = dataset['raw'].copy().pick(mne.pick_types(dataset['raw'].info, csd=True))
+#rawref = dataset['raw'].copy().pick_types(csd=True)
+#rawref = dataset['raw'].copy().pick_types(eeg=True)
 
-XX = raw.get_data(picks='eeg').T
-XX = stats.zscore(XX, axis=0)
+XX = raw.get_data(picks='csd').T
+#XX = raw.get_data(picks='eeg').T
+#XX = stats.zscore(XX, axis=0)
 
 conds = {'Eyes Open': task == 1, 'Eyes Closed': task == -1}
 covs = {'Linear Trend': np.linspace(0, 1, dataset['raw'].n_times)}
@@ -106,6 +112,7 @@ freq_vect, copes, varcopes, extras = sails.stft.glm_periodogram(XX, axis=0,
                                                                 fit_method='glmtools')
 model, design, data = extras
 data.info['dim_labels'] = ['Windows', 'Frequencies', 'Sensors']
+#eye
 
 hdfname = os.path.join(outdir, 'sub-{subj_id}_proc-{mode}_glm-data.hdf5'.format(subj_id=subj_id, mode=mode))
 if os.path.exists(hdfname):
@@ -123,6 +130,37 @@ design.plot_efficiency(show=False, savepath=fout)
 
 #%% ---------------------------------------------------------
 
+
+#freq_vect, copes2, varcopes, extras2 = sails.stft.glm_periodogram(XX, axis=0,
+#                                                                fit_constant=False,
+#                                                                conditions=conds,
+#                                                                contrasts=conts,
+#                                                                nperseg=int(fs*2),
+#                                                                fmin=0.1, fmax=100,
+#                                                                fs=fs, mode='magnitude',
+#                                                                fit_method='glmtools')
+#model2, design2, data2 = extras2
+#
+#resids = model.get_residuals(data.data)
+#resids2 = model2.get_residuals(data2.data)
+#
+## Shapiro-Wilks test statistic is around 1 for gaussian data and LOWER for
+## non-gaussian data. For example
+##
+## stats.shapiro(np.random.randn(1000)) ~= 1
+## stats.shapiro(np.random.randn(1000)**2) ~= 0.7
+#
+#sw = np.zeros((2, 200, 61))
+#for jj in range(200):
+#    for kk in range(61):
+#        sw[0, jj,kk], p = stats.shapiro(resids[:, jj, kk])
+#        sw[1, jj,kk], p = stats.shapiro(resids2[:, jj, kk])
+
+
+
+
+#%% ---------------------------------------------------------
+
 plt.figure()
 for ii in range(9):
     plt.subplot(2,5,ii+1)
@@ -133,7 +171,7 @@ for ii in range(9):
 #%% ---------------------------------------------------------
 # Single channel example figure 1
 
-sensor = 'Cz'
+sensor = 'Pz'
 
 # Extract data segment
 inds = np.arange(140*fs, 160*fs)
@@ -161,7 +199,7 @@ covss = {'Linear Trend': np.linspace(0, 1, len(inds))}
 confss = {'Bad Segments': bads_raw[inds], 'Bad Segments Diff': bads_diff[inds],
           'V-EOG': veog[inds], 'H-EOG': heog[inds]}
 contss = [{'name': 'Mean', 'values':{'Eyes Open': 0.5, 'Eyes Closed': 0.5}},
-         {'name': 'Open < Closed', 'values':{'Eyes Open': 1, 'Eyes Closed': -1}}]
+         {'name': 'Open > Closed', 'values':{'Eyes Open': 1, 'Eyes Closed': -1}}]
 
 # Compute mini-model to get design matrix
 f, copes, varcopes, extras_s = sails.stft.glm_periodogram(XX, axis=0,
@@ -224,7 +262,7 @@ ax_ts.set_yticks(np.linspace(0,stft.shape[0]+1,7))
 ax_ts.set_ylabel('Time (seconds)')
 
 qlt.subpanel_label(ax_ts, 'A', xf=-0.02, yf=panel_label_height)
-ax_ts.text(0.1, panel_label_height, '\nRaw EEG\nChannel: Cz', ha='center', transform=ax_ts.transAxes, fontsize='large')
+ax_ts.text(0.1, panel_label_height, '\nRaw EEG\nChannel: {}'.format(sensor), ha='center', transform=ax_ts.transAxes, fontsize='large')
 qlt.subpanel_label(ax_ts, 'B', xf=0.25, yf=panel_label_height)
 ax_ts.text(0.4, panel_label_height, 'Segmented EEG', ha='center', transform=ax_ts.transAxes, fontsize='large')
 qlt.subpanel_label(ax_ts, 'C', xf=0.7, yf=panel_label_height)
@@ -263,7 +301,7 @@ plt.savefig(fout, dpi=300, transparent=True)
 tstat_args = {'hat_factor': 5e-3, 'varcope_smoothing': 'medfilt', 'window_size': 15, 'smooth_dims': 1}
 tstat_args2 = {'hat_factor': 5e-3, 'varcope_smoothing': 'medfilt', 'window_size': 15, 'smooth_dims': 0}
 
-ch_ind = mne.pick_channels(raw.ch_names, ['Cz'])[0]
+ch_ind = mne.pick_channels(raw.ch_names, [sensor])[0]
 data_cz = deepcopy(data)
 data_cz.data = data.data[:, :, ch_ind]
 
@@ -284,8 +322,8 @@ P2 = glm.permutations.ClusterPermutation(design, data_cz, con_ind[1], 500,
 
 fig = plt.figure(figsize=(16, 6))
 ax = plt.axes([0.075, 0.2, 0.25, 0.6])
-ax.plot(fx, model.copes[2, :, 0], label='Eyes Open')
-ax.plot(fx, model.copes[3, :, 0], label='Eyes Closed')
+ax.plot(fx, model.copes[2, :, ch_ind], label='Eyes Open')
+ax.plot(fx, model.copes[3, :, ch_ind], label='Eyes Closed')
 ax.set_xticks(ft)
 ax.set_xticklabels(ftl)
 ax.set_ylabel('FFT Magnitude')
@@ -299,18 +337,18 @@ for tag in ['top', 'right']:
 
 for ii in range(len(con_ind)):
     plt.axes([0.4+ii*0.3, 0.7, 0.1, 0.15])
-    plt.plot(fx, model.copes[con_ind[ii], :, 0])
+    plt.plot(fx, model.copes[con_ind[ii], :, ch_ind])
     qlt.subpanel_label(plt.gca(), chr(71+ii), xf=-0.02, yf=1.3)
     plt.xticks(ft[::2], ftl[::2])
     for tag in ['top', 'right']:
         plt.gca().spines[tag].set_visible(False)
-    plt.title('cope-spectrum')
+    plt.title('cope-spectrum\n')
     plt.axes([0.55+ii*0.3, 0.7, 0.1, 0.15])
-    plt.plot(fx, model.varcopes[con_ind[ii], :, 0])
+    plt.plot(fx, model.varcopes[con_ind[ii], :, ch_ind])
     plt.xticks(ft[::2], ftl[::2])
     for tag in ['top', 'right']:
         plt.gca().spines[tag].set_visible(False)
-    plt.title('varcope-spectrum')
+    plt.title('varcope-spectrum\n')
 
     ax = plt.axes([0.4+ii*0.3, 0.1, 0.25, 0.5])
     P = P1 if ii == 0 else P2
@@ -321,7 +359,7 @@ for ii in range(len(con_ind)):
     ts = glm.fit.get_tstats(model.copes[con_ind[ii], :, ch_ind], model.varcopes[con_ind[ii], :, ch_ind], **tstat_args2)
     ax.plot(fx, ts)
     name = model.contrast_names[P.contrast_idx]
-    ax.text(0.5, 1.7, f'Regressor: {name}', ha='center', transform=ax.transAxes, fontsize='large')
+    ax.text(0.5, 1.7, f'Contrast : {name}', ha='center', transform=ax.transAxes, fontsize='large')
     ax.set_xticks(ft)
     ax.set_xticklabels(ftl)
     for tag in ['top', 'right']:
@@ -336,7 +374,7 @@ plt.savefig(fout, dpi=300, transparent=True)
 
 #%% --------------------------------------------------------
 
-adjacency, ch_names = mne.channels.channels._compute_ch_adjacency(raw.info, 'eeg')
+adjacency, ch_names = mne.channels.channels._compute_ch_adjacency(raw.info, 'csd')
 ntests = np.prod(data.data.shape[1:])
 ntimes = data.data.shape[1]
 adjacency = mne.stats.cluster_level._setup_adjacency(adjacency, ntests, ntimes)
@@ -374,18 +412,18 @@ ll = [['Rec Start', 'Rec End'],
       ['Low H-EOG Activity', 'High H-EOG Activity']]
 
 col_heads = ['Mean', 'Linear Trend', 'Rest Condition', 'Bad Segments', 'VEOG', 'HEOG']
-refraw = dataset['raw'].copy().pick_types(eeg=True)
+#rawref = dataset['raw'].copy().pick_types(eeg=True)
 
 plt.figure(figsize=(16, 16))
 ax = plt.axes([0.075, 0.6, 0.175, 0.2])
-ax.set_ylim(0, 0.0025)
+ax.set_ylim(0, 2e-5)
 qlt.plot_joint_spectrum(ax, model.copes[2, :, :], rawref, xvect=freq_vect,
                         freqs=[9], base=0.5, topo_scale=None,
                         ylabel='Amplitude', title=model.contrast_names[2])
 qlt.subpanel_label(ax, chr(65), yf=1.6)
 
 ax = plt.axes([0.3125, 0.6, 0.175, 0.2])
-ax.set_ylim(0, 0.0025)
+ax.set_ylim(0, 2e-5)
 qlt.plot_joint_spectrum(ax, model.copes[3, :, :], rawref, xvect=freq_vect,
                         freqs=[9], base=0.5, topo_scale=None,
                         ylabel='Amplitude', title=model.contrast_names[3])
@@ -398,7 +436,7 @@ qlt.plot_sensorspace_clusters(data, P[0], rawref, ax, xvect=freq_vect,
 qlt.subpanel_label(ax, chr(67), yf=1.6)
 
 ax = plt.axes([0.775, 0.6, 0.2, 0.2])
-qlt.plot_channel_layout(ax, refraw, size=100)
+qlt.plot_channel_layout(ax, rawref, size=100)
 
 for ii in range(5):
     ax = plt.axes([0.065+ii*0.195, 0.25, 0.125, 0.2])
@@ -408,9 +446,9 @@ for ii in range(5):
     qlt.subpanel_label(ax, chr(68+ii), yf=1.6)
 
     ax2 = plt.axes([0.065+ii*0.195, 0.07, 0.125, 0.2*2/3])
-    ax2.set_ylim(0, 0.002)
+    ax2.set_ylim(0, 1.5e-5)
     proj,llabels = model.project_range(P[ii+3].contrast_idx-2, nsteps=2)
-    qlt.plot_sensor_data(ax2, proj.mean(axis=2).T, refraw, xvect=freq_vect, base=0.5, sensor_cols=False, lw=2)
+    qlt.plot_sensor_data(ax2, proj.mean(axis=2).T, rawref, xvect=freq_vect, base=0.5, sensor_cols=False, lw=2)
     ylabel = 'Amplitude' if ii == 0 else ''
     qlt.decorate_spectrum(ax2, ylabel=ylabel)
     ax2.legend(ll[ii], frameon=False, fontsize=8)
@@ -431,7 +469,10 @@ ref = models[0].r_square[0, :, :]
 for ii in range(8):
     ax = plt.subplot(3, 4, ii+1)
     change =  models[ii].r_square[0, :, :] * 100
-    qlt.plot_sensor_spectrum(ax, change, refraw, freq_vect, base=0.5)
+    if ii == 3:
+        qlt.plot_sensor_spectrum(ax, change, rawref, freq_vect, base=0.5, sensor_proj=True)
+    else:
+        qlt.plot_sensor_spectrum(ax, change, rawref, freq_vect, base=0.5)
     ax.set_ylabel('R-squared (%)')
     label = 'Full Model' if ii == 0 else "'{0}' only".format(models[0].regressor_names[ii-1])
     ax.set_title(label)
@@ -472,8 +513,8 @@ time = np.arange(nperseg/2, dataset['raw'].n_times - nperseg/2 + 1,
 #model, design, data = extras4
 
 vmin = 0
-vmax = 0.0025
-chan = 0
+vmax = 3e-5#None #0.0025
+chan = ch_ind
 
 plt.figure(figsize=(16, 10))
 plt.subplots_adjust(right=0.975, top=0.9, hspace=0.4)
@@ -509,7 +550,7 @@ plt.subplot(414)
 plt.xticks(np.arange(18)*60, np.arange(18))
 plt.ylabel('Frequency (Hz)')
 plt.xlabel('Time (mins)')
-plt.pcolormesh(time, freq_vect, fit.T, vmin=vmin, vmax=None, cmap='magma_r')
+plt.pcolormesh(time, freq_vect, fit.T, vmin=vmin, vmax=vmax, cmap='magma_r')
 plt.title('Confound Regressors Only')
 plt.colorbar()
 qlt.subpanel_label(plt.gca(), 'D')

@@ -74,7 +74,7 @@ def lemon_ica(dataset, userargs, logfile=None):
     # Find and exclude VEOG
     #eog_indices, eog_scores = dataset['ica'].find_bads_eog(dataset['raw'])
     veog_indices, eog_scores =  dataset['ica'].find_bads_eog(dataset['raw'], 'VEOG')
-    if len(heog_indices) == 0:
+    if len(veog_indices) == 0:
         veog_indices, eog_scores =  dataset['ica'].find_bads_eog(dataset['raw'], 'VEOG', threshold=2)
     dataset['veog_scores'] = eog_scores
     dataset['ica'].exclude.extend(veog_indices)
@@ -174,7 +174,6 @@ def camcan_ica(dataset, userargs):
     else:
         logger.info('Components were not removed from raw data')
     return dataset
-
 
 def camcan_check_ica(dataset, figpath):
 

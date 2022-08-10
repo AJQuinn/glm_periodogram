@@ -29,7 +29,8 @@ from lemon_support import (lemon_make_blinks_regressor,
                            lemon_make_task_regressor,
                            lemon_make_bads_regressor,
                            lemon_set_channel_montage,
-                           lemon_ica, lemon_check_ica)
+                           lemon_ica, lemon_check_ica,
+                           lemon_create_heog)
 config = osl.preprocessing.load_config('lemon_preproc.yml')
 pprint.pprint(config)
 
@@ -38,7 +39,7 @@ subj_id = '010060'
 
 base = '/Users/andrew/Projects/lemon/EEG_Raw_BIDS_ID/sub-{subj_id}/RSEEG'.format(subj_id=subj_id)
 infile = os.path.join(base, 'sub-{subj_id}.vhdr'.format(subj_id=subj_id))
-extras = [lemon_set_channel_montage, lemon_ica]
+extras = [lemon_set_channel_montage, lemon_ica, lemon_create_heog]
 dataset1 = osl.preprocessing.run_proc_chain(infile, config,
                                             extra_funcs=extras,
                                             outname='sub-{subj_id}_proc-full'.format(subj_id=subj_id),
@@ -96,7 +97,8 @@ for mode in ['full', 'noica']:
     task = lemon_make_task_regressor(dataset)
 
     # Make bad-segments regressor
-    bads = lemon_make_bads_regressor(dataset)
+    bads_raw = lemon_make_bads_regressor(dataset, mode='raw')
+    bads_diff = lemon_make_bads_regressor(dataset, mode='diff')
 
     #bads[blink_vect>0] = 0
 
@@ -107,14 +109,31 @@ for mode in ['full', 'noica']:
     XX = raw.get_data(picks='eeg').T
     XX = stats.zscore(XX, axis=0)
 
-    covs = {'Linear Trend': np.linspace(0, 1, dataset['raw'].n_times),
-            'Eyes Open>Closed': task}
-    #cons = {'Bad Segments': bads, 'Blinks': blink_vect}
-    cons = {'Bad Segments': bads, 'V-EOG': veog, 'H-EOG': heog}
+    #covs = {'Linear Trend': np.linspace(0, 1, dataset['raw'].n_times),
+    #        'Eyes Open>Closed': task}
+    ##cons = {'Bad Segments': bads, 'Blinks': blink_vect}
+    #model, design, data = extras
+    #cons = {'Bad Segments': bads, 'V-EOG': veog, 'H-EOG': heog}
+    #fs = dataset['raw'].info['sfreq']
+    #freq_vect, copes, varcopes, extras = sails.stft.glm_periodogram(XX, axis=0,
+    #                                                                covariates=covs,
+    #                                                                confounds=cons,
+    #                                                                nperseg=int(fs*2),
+    #                                                                fmin=0.1, fmax=100,
+    #                                                                fs=fs, mode='magnitude',
+    #                                                                fit_method='glmtools')
+    conds = {'Eyes Open': task == 1, 'Eyes Closed': task == -1}
+    covs = {'Linear Trend': np.linspace(0, 1, dataset['raw'].n_times)}
+    confs = {'Bad Segments': bads_raw, 'Bad Segments Diff': bads_diff, 'V-EOG': veog, 'H-EOG': heog}
+    conts = [{'name': 'Mean', 'values':{'Eyes Open': 0.5, 'Eyes Closed': 0.5}},
+             {'name': 'Open < Closed', 'values':{'Eyes Open': 1, 'Eyes Closed': -1}}]
     fs = dataset['raw'].info['sfreq']
     freq_vect, copes, varcopes, extras = sails.stft.glm_periodogram(XX, axis=0,
+                                                                    fit_constant=False,
+                                                                    conditions=conds,
                                                                     covariates=covs,
-                                                                    confounds=cons,
+                                                                    confounds=confs,
+                                                                    contrasts=conts,
                                                                     nperseg=int(fs*2),
                                                                     fmin=0.1, fmax=100,
                                                                     fs=fs, mode='magnitude',
@@ -241,8 +260,8 @@ for mode in ['full', 'noica']:
 
     shade = [0.7, 0.7, 0.7]
     xf = -0.03
-    plt.figure(figsize=(16, 12))
-    plt.subplots_adjust(right=0.957, top=0.95, hspace=0.35, wspace=0.4, bottom=0.04)
+    plt.figure(figsize=(16, 16))
+    plt.subplots_adjust(right=0.957, top=0.975, hspace=0.35, wspace=0.4, bottom=0.04, left=0.05)
     for ii in range(len(model.contrast_names)):
         ind = ii+4 if ii <3 else ii+10
         ax = plt.subplot(6, 3, ind)
@@ -290,37 +309,38 @@ for mode in ['full', 'noica']:
     plt.subplots_adjust(wspace=0.4, hspace=0.5, top=0.95, bottom=0.05)
     labels = []
 
-    ax = plt.subplot(3, 4, (1,5))
-    qlt.plot_sensor_spectrum(ax, models[0].r_square[0, :, :]*100, refraw, freq_vect, base=0.5)
-    ax.set_ylabel('R-squared (%)')
-    ax.set_title('Full Model')
-    labels.append('Full Model')
-    qlt.subpanel_label(ax, chr(65))
-    pos = list(ax.get_position().bounds)
-    pos[1] += 0.1
-    pos[3] -= 0.15
-    ax.set_position(pos)
-    ax.set_ylim(0)
+    #ax = plt.subplot(3, 4, (1,5))
+    #qlt.plot_sensor_spectrum(ax, models[0].r_square[0, :, :]*100, refraw, freq_vect, base=0.5)
+    #ax.set_ylabel('R-squared (%)')
+    #ax.set_title('Full Model')
+    #labels.append('Full Model')
+    #qlt.subpanel_label(ax, chr(65))
+    #pos = list(ax.get_position().bounds)
+    #pos[1] += 0.1
+    #pos[3] -= 0.15
+    #ax.set_position(pos)
+    #ax.set_ylim(0)
 
-    inds = [2, 3, 4, 6, 7, 8]
+    #inds = [2, 3, 4, 6, 7, 8]
     ref = models[0].r_square[0, :, :]
-    for ii in range(6):
-        ax = plt.subplot(3,4,inds[ii])
-        change =  models[1+ii].r_square[0, :, :] * 100
+    for ii in range(8):
+        ax = plt.subplot(3, 4, ii+1)
+        change =  models[ii].r_square[0, :, :] * 100
         qlt.plot_sensor_spectrum(ax, change, refraw, freq_vect, base=0.5)
         ax.set_ylabel('R-squared (%)')
-        ax.set_title("'{0}' only".format(models[0].regressor_names[ii]))
-        labels.append("'{0}' only".format(models[0].regressor_names[ii]))
-        qlt.subpanel_label(ax, chr(65+ii+1))
-        ax.set_ylim(0)
+        label = 'Full Model' if ii == 0 else "'{0}' only".format(models[0].regressor_names[ii-1])
+        ax.set_title(label)
+        labels.append(label)
+        ax.set_ylim(0, 80)
+        qlt.subpanel_label(ax, chr(65+ii))
 
     ax = plt.subplot(313)
-    for ii in range(7):
-        x = models[6-ii].r_square.flatten() * 100
+    for ii in range(8):
+        x = models[7-ii].r_square.flatten() * 100
         y = np.random.normal(ii+1, 0.05, size=len(x))
         plt.plot(x, y, 'r.', alpha=0.2)
     h = plt.boxplot([m.r_square.flatten() * 100 for m in models[::-1]], vert=False, showfliers=False)
-    plt.yticks(np.arange(1,8),labels[::-1])
+    plt.yticks(np.arange(1,9),labels[::-1])
     for tag in ['top', 'right']:
         ax.spines[tag].set_visible(False)
     ax.set_xlabel('R-Squared (%)')
@@ -329,7 +349,7 @@ for mode in ['full', 'noica']:
     pos[0] += 0.15
     pos[2] -= 0.2
     ax.set_position(pos)
-    qlt.subpanel_label(ax, chr(65+6))
+    qlt.subpanel_label(ax, chr(65+8))
 
     fout = os.path.join(outdir, 'sub-{subj_id}_proc-{mode}_glm-modelselection.png'.format(subj_id=subj_id, mode=mode))
     plt.savefig(fout, dpi=300, transparent=True)
@@ -351,7 +371,7 @@ for mode in ['full', 'noica']:
     plt.figure(figsize=(16, 10))
     plt.subplots_adjust(right=0.975, top=0.9, hspace=0.4)
     plt.subplot(411)
-    plt.pcolormesh(time, freq_vect, data.data[:, :, chan].T, vmin=vmin, vmax=vmax, cmap='hot_r')
+    plt.pcolormesh(time, freq_vect, data.data[:, :, chan].T, vmin=vmin, vmax=vmax, cmap='inferno_r')
     plt.xticks(np.arange(18)*60, np.arange(18))
     plt.ylabel('Frequency (Hz)')
     plt.title('STFT Data')
@@ -359,8 +379,8 @@ for mode in ['full', 'noica']:
     qlt.subpanel_label(plt.gca(), 'A')
 
     plt.subplot(412)
-    plt.pcolormesh(time, np.arange(6), design.design_matrix[:, ::-1].T, cmap='RdBu_r')
-    plt.yticks(np.arange(6), model.contrast_names[::-1])
+    plt.pcolormesh(time, np.arange(design.num_regressors), design.design_matrix[:, ::-1].T, cmap='RdBu_r')
+    plt.yticks(np.arange(design.num_regressors), model.regressor_names[::-1])
     plt.xticks(np.arange(18)*60, np.arange(18))
     plt.title('Design Matrix')
     plt.colorbar()
@@ -371,7 +391,7 @@ for mode in ['full', 'noica']:
     plt.subplot(413)
     plt.xticks(np.arange(18)*60, np.arange(18))
     plt.ylabel('Frequency (Hz)')
-    plt.pcolormesh(time, freq_vect, fit.T, vmin=vmin, vmax=vmax, cmap='hot_r')
+    plt.pcolormesh(time, freq_vect, fit.T, vmin=vmin, vmax=vmax, cmap='inferno_r')
     plt.title('Mean + Covariate Regressors')
     plt.colorbar()
     qlt.subpanel_label(plt.gca(), 'C')
@@ -382,7 +402,8 @@ for mode in ['full', 'noica']:
     plt.xticks(np.arange(18)*60, np.arange(18))
     plt.ylabel('Frequency (Hz)')
     plt.xlabel('Time (mins)')
-    plt.pcolormesh(time, freq_vect, fit.T, vmin=vmin, vmax=0.001, cmap='hot_r')
+    plt.pcolormesh(time, freq_vect, fit.T, vmin=vmin, vmax=0.001, cmap='inferno_r')
+    #plt.pcolormesh(time, freq_vect, data.data[:, :, chan].T-fit.T, vmin=vmin, vmax=vmax, cmap='inferno_r')
     plt.title('Confound Regressors Only')
     plt.colorbar()
     qlt.subpanel_label(plt.gca(), 'D')
