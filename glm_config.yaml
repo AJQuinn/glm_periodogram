@@ -1,2 +1,2 @@
-lemon_raw: /Users/andrew/Projects/lemon/EEG_Raw_BIDS_ID/
-lemon_output_dir: /Users/andrew/Projects/glm/lemon/
+lemon_raw: /rds/projects/q/quinna-spectral-changes-in-ageing/raw_data/
+lemon_output: /rds/projects/q/quinna-spectral-changes-in-ageing/

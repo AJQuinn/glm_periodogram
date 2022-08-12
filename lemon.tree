@@ -1,5 +1,0 @@
-{subject}
-  RSEEG
-    {subject}.eeg (eeg)
-    {subject}.vhdr (vhdr)
-    {subject}.vmrk (vmrk)

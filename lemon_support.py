@@ -21,6 +21,7 @@ def lemon_set_channel_montage(dataset, userargs):
     #base = f'/Users/andrew/Projects/lemon/EEG_Raw_BIDS_ID/sub-{subj}/RSEEG/'
     #base = f'/ohba/pi/knobre/datasets/MBB-LEMON/EEG_MPILMBB_LEMON/EEG_Raw_BIDS_ID/sub-{subj}/RSEEG/'
     ref_file = os.path.join(cfg['lemon_raw'], f'sub-{subj}', 'RSEEG', f'sub-{subj}.mat')
+    ref_file = os.path.join(cfg['code_dir'], 'sub-010060.mat')
     X = io.loadmat(ref_file)
     ch_pos = {}
     for ii in range(len(X['Channel'][0])-1):  #final channel is reference
@@ -260,7 +261,8 @@ def find_eog_events(raw, event_id=998):
 
     n_events = len(eog_events)
     logger.info(f'Number of EOG events detected: {n_events}')
-    eog_events = np.array([eog_events + raw.first_samp,
+    #eog_events = np.array([eog_events + raw.first_samp,
+    eog_events = np.array([eog_events,
                            np.zeros(n_events, int),
                            event_id * np.ones(n_events, int)]).T
 
@@ -314,7 +316,8 @@ def lemon_make_blinks_regressor(raw, corr_thresh=0.75, figpath=None):
     logger.info('found {0} clean blinks'.format(eog_events.shape[0]))
 
     blink_covariate = np.zeros((raw.n_times,))
-    blink_covariate[eog_events[:, 0] - raw.first_samp] = 1
+    #blink_covariate[eog_events[:, 0] - raw.first_samp] = 1
+    blink_covariate[eog_events[:, 0]] = 1
     blink_covariate = ndimage.maximum_filter(blink_covariate,
                                              size=raw.info['sfreq']//2)
 
@@ -340,31 +343,39 @@ def lemon_make_blinks_regressor(raw, corr_thresh=0.75, figpath=None):
     return blink_covariate, eog_events.shape[0], clean.average(picks='eog')
 
 
-def lemon_make_bads_regressor(dataset, mode='raw'):
-    bads = np.zeros((dataset['raw'].n_times,))
-    for an in dataset['raw'].annotations:
+def lemon_make_bads_regressor(raw, mode='raw'):
+    bads = np.zeros((raw.n_times,))
+    for an in raw.annotations:
         if an['description'].startswith('bad') and an['description'].endswith(mode):
-            start = dataset['raw'].time_as_index(an['onset'])[0] - dataset['raw'].first_samp
-            duration = int(an['duration'] * dataset['raw'].info['sfreq'])
+            start = raw.time_as_index(an['onset'])[0] - raw.first_samp
+            duration = int(an['duration'] * raw.info['sfreq'])
             bads[start:start+duration] = 1
+    if mode == 'raw':
+        bads[:int(raw.info['sfreq']*2)] = 1
+        bads[-int(raw.info['sfreq']*2):] = 1
+    else:
+        bads[:int(raw.info['sfreq'])] = 1
+        bads[-int(raw.info['sfreq']):] = 1
     return bads
 
 
-def quick_plot_eogs(raw, ica, figpath=None):
+def quick_plot_eog_icas(raw, ica, figpath=None):
 
     inds = np.arange(250*45, 250*300)
 
-    plt.figure(figsize=(24, 9))
+    plt.figure(figsize=(16, 9))
     veog = raw.get_data(picks='VEOG')[0, :]
     ica_veog = raw.get_data(picks='ICA-VEOG')[0, :]
-    plt.axes([0.05, 0.55, 0.125, 0.4])
+    ax = plt.axes([0.05, 0.55, 0.125, 0.4])
     comp = ica.get_components()[:, ica.labels_['top'][0]]
-    mne.viz.plot_topomap(comp, ica.info)
+    mne.viz.plot_topomap(comp, ica.info, axes=ax, show=False)
+
     plt.axes([0.2, 0.55, 0.475, 0.4])
     plt.plot(stats.zscore(veog[inds]))
     plt.plot(stats.zscore(ica_veog[inds])-10)
     plt.legend(['VEOGs', 'ICA-VEOG'], frameon=False)
     plt.xlim(0, 250*180)
+
     plt.axes([0.725, 0.55, 0.25, 0.4])
     plt.plot(veog, ica_veog, '.k')
     veog = raw.get_data(picks='VEOG', reject_by_annotation='omit')[0, :]
@@ -379,12 +390,14 @@ def quick_plot_eogs(raw, ica, figpath=None):
     ica_heog = raw.get_data(picks='ICA-HEOG')[0, :]
     plt.axes([0.05, 0.05, 0.125, 0.4])
     comp = ica.get_components()[:, ica.labels_['top'][1]]
-    mne.viz.plot_topomap(comp, ica.info)
+    mne.viz.plot_topomap(comp, ica.info, show=False)
+
     plt.axes([0.2, 0.05, 0.475, 0.4])
     plt.plot(stats.zscore(heog[inds]))
     plt.plot(stats.zscore(ica_heog[inds])-5)
     plt.legend(['HEOGs', 'ICA-HEOG'], frameon=False)
     plt.xlim(0, 250*180)
+
     plt.axes([0.725, 0.05, 0.25, 0.4])
     plt.plot(heog, ica_heog, '.k')
     heog = raw.get_data(picks='HEOG', reject_by_annotation='omit')[0, :]
@@ -395,6 +408,15 @@ def quick_plot_eogs(raw, ica, figpath=None):
     plt.title('Correlation : r = {0}'.format(np.corrcoef(heog, ica_heog)[0,  1]))
 
     plt.savefig(figpath, transparent=False, dpi=300)
+
+def quick_plot_eog_epochs(raw, figpath=None):
+
+    fig = mne.preprocessing.create_eog_epochs(raw, picks='eeg').average().plot_joint(show=False)
+    fig.savefig(figpath.format('eeg_eog_epochs'))
+
+    fig = mne.preprocessing.create_eog_epochs(raw).average().plot(show=False)
+    fig.savefig(figpath.format('eog_eog_epochs'))
+
 
 
 def plot_design(ax, design_matrix, regressor_names):

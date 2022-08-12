@@ -5,12 +5,7 @@ import glob
 import sails
 
 import numpy as np
-import h5py
-import pandas as pd
-from scipy import stats
-from anamnesis import obj_from_hdf5file
-import matplotlib.pyplot as plt
-
+from dask.distributed import Client
 
 from lemon_support import (lemon_make_blinks_regressor,
                            lemon_make_task_regressor,
@@ -18,14 +13,9 @@ from lemon_support import (lemon_make_blinks_regressor,
                            lemon_set_channel_montage,
                            lemon_create_heog,
                            lemon_ica, lemon_check_ica)
+
 from glm_config import cfg
 
-import sys
-sys.path.insert(0, '/home/ajquinn/src/glm')
-import glmtools as glm
-
-sys.path.append('/home/ajquinn/src/qlt/')
-import qlt
 
 #%% ---------------------------
 #
@@ -39,15 +29,21 @@ if __name__ == '__main__':
 
     extra_funcs = [lemon_set_channel_montage, lemon_create_heog, lemon_ica]
 
-    fbase = '/ohba/pi/knobre/datasets/MBB-LEMON/EEG_MPILMBB_LEMON/EEG_Raw_BIDS_ID/{subj}/RSEEG/{subj}.vhdr'
+    datadir = '/rds/projects/q/quinna-spectral-changes-in-ageing/raw_data'
+    fbase = os.path.join(cfg['lemon_raw'], '{subj}', 'RSEEG', '{subj}.vhdr')
+
+    st = osl.utils.Study(fbase)
     inputs = st.match_files
     print(len(inputs))
 
     config = osl.preprocessing.load_config('lemon_preproc.yml')
 
     proc_outdir = '/ohba/pi/knobre/ajquinn/lemon/processed_data/'
+    proc_outdir = '/rds/projects/q/quinna-spectral-changes-in-ageing/processed_data'
+    proc_outdir = cfg['lemon_processed_data']
 
     #dataset = osl.preprocessing.run_proc_chain(inputs[10], config, outdir=proc_outdir, extra_funcs=extra_funcs)
 
-    goods = osl.preprocessing.run_proc_batch(config, inputs[33:], proc_outdir, overwrite=True, nprocesses=3, extra_funcs=extra_funcs)
+    client = Client(n_workers=8, threads_per_worker=1)
+    goods = osl.preprocessing.run_proc_batch(config, inputs, proc_outdir, overwrite=True, extra_funcs=extra_funcs, dask_client=True)
 

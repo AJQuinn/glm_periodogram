@@ -8,7 +8,6 @@ preproc:
   - filter:                         {l_freq: 0.25, h_freq: 125, method: 'iir', iir_params: {order: 5, ftype: butter}}
   - notch_filter:                   {freqs: 50 100}
   - bad_channels:                   {picks: 'eeg'}
-  - annotate_flat:                  None
   - resample:                       {sfreq: 250}
   - bad_segments:                   {segment_len: 2500, picks: 'eog'}
   - lemon_ica:                      {n_components: 30, picks: eeg}

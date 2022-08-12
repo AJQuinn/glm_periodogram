@@ -2,59 +2,46 @@ import os
 import mne
 import osl
 import glob
-import sails
-
-import numpy as np
 import h5py
+import sails
 import pandas as pd
-from scipy import stats
+
 from anamnesis import obj_from_hdf5file
 import matplotlib.pyplot as plt
 
+import numpy as np
+from dask.distributed import Client
 
 from lemon_support import (lemon_make_blinks_regressor,
                            lemon_make_task_regressor,
                            lemon_make_bads_regressor,
-                           lemon_set_channel_montage,
+                           quick_plot_eog_icas,
+                           quick_plot_eog_epochs,
                            lemon_create_heog,
                            lemon_ica, lemon_check_ica)
+
 from glm_config import cfg
 
-import sys
-sys.path.insert(0, '/home/ajquinn/src/glm')
-import glmtools as glm
 
-sys.path.append('/home/ajquinn/src/qlt/')
-import qlt
+def get_eeg_data(raw, csd=True):
+    """Load EEG and perform sanity checks."""
 
-extra_funcs = [lemon_set_channel_montage, lemon_create_heog, lemon_ica]
-
-treename = os.path.join('lemon.tree')
-lemon = osl.utils.StudyTree(treename, cfg['lemon_raw'])
-inputs = sorted(lemon.get('vhdr'))
-print(len(inputs))
-
-config = osl.preprocessing.load_config('lemon_preproc.yml')
-
-proc_outdir = '/ohba/pi/knobre/ajquinn/lemon/processed_data/'
-
-#dataset = osl.preprocessing.run_proc_chain(inputs[10], config, outdir=proc_outdir, extra_funcs=extra_funcs)
-
-goods = osl.preprocessing.run_proc_batch(config, inputs[33:], proc_outdir, overwrite=True, nprocesses=3, extra_funcs=extra_funcs)
-
-#%% ---------------------------------------------------
-
-def get_eeg_data(raw):
-    baseref = '/ohba/pi/knobre/datasets/MBB-LEMON/EEG_MPILMBB_LEMON/EEG_Preprocessed_BIDS_ID/sub-010003_EO.set'
-    ref = mne.io.read_raw_eeglab(baseref, preload=True)
-    mon = ref.get_montage()
-
-    # Get data from same picks
-    X = raw.get_data(picks='eeg')
+    # Use first scan as reference for channel labels and order
+    fbase = os.path.join(cfg['lemon_processed_data'], 'sub-010002_preproc_raw.fif')
+    reference = mne.io.read_raw_fif(fbase).pick_types(eeg=True)
+    mon = reference.get_montage()
 
     # Load ideal layout and match data-channels
     raw = raw.copy().pick_types(eeg=True)
     ideal_inds = [mon.ch_names.index(c) for c in raw.info['ch_names']]
+
+    if csd:
+        # Apply laplacian if requested
+        raw = mne.preprocessing.compute_current_source_density(raw)
+        X = raw.get_data(picks='csd')
+    else:
+        # Get data from EEG picks
+        X = raw.get_data(picks='eeg')
 
     # Preallocate & store ouput
     Y = np.zeros((len(mon.ch_names), X.shape[1]))
@@ -63,16 +50,6 @@ def get_eeg_data(raw):
 
     return Y
 
-
-def make_eog_regressor(eog):
-    bads = sails.utils.detect_artefacts(eog, axis=0, reject_mode='segments', segment_len=2500)
-    eog = eog**2
-    thresh = np.percentile(eog[bads==False], 95)
-    eog = (eog>thresh).astype(float)
-    eog[bads] = 0
-    return eog
-
-
 def run_first_level(fname, outdir):
     runname = fname.split('/')[-1].split('.')[0]
     print('processing : {0}'.format(runname))
@@ -80,6 +57,9 @@ def run_first_level(fname, outdir):
     subj_id = osl.utils.find_run_id(fname)
 
     raw = mne.io.read_raw_fif(fname, preload=True)
+
+    icaname = fname.replace('preproc_raw.fif', 'ica.fif')
+    ica = mne.preprocessing.read_ica(icaname)
 
     picks = mne.pick_types(raw.info, eeg=True, ref_meg=False)
     chlabels = np.array(raw.info['ch_names'], dtype=h5py.special_dtype(vlen=str))[picks]
@@ -90,23 +70,33 @@ def run_first_level(fname, outdir):
     # Make blink regressor
     fout = os.path.join(outdir, '{subj_id}_blink-summary.png'.format(subj_id=subj_id))
     blink_vect, numblinks, evoked_blink = lemon_make_blinks_regressor(raw, figpath=fout)
+
     fout = os.path.join(outdir, '{subj_id}_icaeog-summary.png'.format(subj_id=subj_id))
-    quick_plot_eogs(raw, figpath=fout)
+    quick_plot_eog_icas(raw, ica, figpath=fout)
+
+    fout = os.path.join(outdir, '{subj_id}_{0}.png'.format('{0}', subj_id=subj_id))
+    quick_plot_eog_epochs(raw, figpath=fout)
 
     # No reason to square if binarising?
-    veog = make_eog_regressor(raw.get_data(picks='ICA-VEOG')[0, :])
-    heog = make_eog_regressor(raw.get_data(picks='ICA-HEOG')[0, :])
+    #veog = make_eog_regressor(raw.get_data(picks='ICA-VEOG')[0, :])
+    #heog = make_eog_regressor(raw.get_data(picks='ICA-HEOG')[0, :])
+
+    veog = raw.get_data(picks='ICA-VEOG')[0, :]**2
+    veog = veog > np.percentile(veog, 97.5)
+
+    heog = raw.get_data(picks='ICA-HEOG')[0, :]**2
+    heog = heog > np.percentile(heog, 97.5)
 
     # Make task regressor
     task = lemon_make_task_regressor({'raw': raw})
 
     # Make bad-segments regressor
-    bads_raw = lemon_make_bads_regressor(dataset, mode='raw')
-    bads_diff = lemon_make_bads_regressor(dataset, mode='diff')
+    bads_raw = lemon_make_bads_regressor(raw, mode='raw')
+    bads_diff = lemon_make_bads_regressor(raw, mode='diff')
 
     # Get data
     XX = get_eeg_data(raw).T
-    XX = stats.zscore(XX, axis=0)
+    #XX = stats.zscore(XX, axis=0)
     print(XX.shape)
 
     # Run GLM-Periodogram
@@ -114,7 +104,7 @@ def run_first_level(fname, outdir):
     #        'Eyes Open>Closed': task}
     #cons = {'Bad Segments': bads, 'V-EOG': veog, 'H-EOG': heog}
     conds = {'Eyes Open': task == 1, 'Eyes Closed': task == -1}
-    covs = {'Linear Trend': np.linspace(0, 1, dataset['raw'].n_times)}
+    covs = {'Linear Trend': np.linspace(0, 1, raw.n_times)}
     confs = {'Bad Segments': bads_raw,
              'Bad Segments Diff': bads_diff,
              'V-EOG': veog, 'H-EOG': heog}
@@ -184,7 +174,7 @@ def quick_plot_firstlevel(hdfname, rawpath):
     model = obj_from_hdf5file(hdfname, 'model')	
     freq_vect = h5py.File(hdfname, 'r')['freq_vect'][()]
 
-    tstat_args = {'hat_factor': 5e-3, 'varcope_smoothing': 'medfilt', 'window_size': 15, 'smooth_dims': 1}
+    tstat_args = {'varcope_smoothing': 'medfilt', 'window_size': 15, 'smooth_dims': 1}
     ts = model.get_tstats(**tstat_args)
     ts = model.copes
 
@@ -192,24 +182,23 @@ def quick_plot_firstlevel(hdfname, rawpath):
     for ii in range(9):
         ind = 6 if ii < 5 else 11
         ax = plt.subplot(4, 5, ii+ind)
-        qlt.plot_joint_spectrum(ax, ts[ii, :, :], raw, xvect=freq_vect, freqs=[1, 9], base=0.5, topo_scale=None)
+        #qlt.plot_joint_spectrum(ax, ts[ii, :, :], raw, xvect=freq_vect, freqs=[1, 9], base=0.5, topo_scale=None)
+        ax.plot(freq_vect, ts[ii, :, :])
+        ax.set_title(model.contrast_names[ii])
 
     outf = hdfname.replace('.hdf5', '_glmsummary.png')
     plt.savefig(outf, dpi=300)
     plt.close('all')
 
+proc_outdir = cfg['lemon_processed_data']
 
+fbase = os.path.join(cfg['lemon_processed_data'], '{subj}_preproc_raw.fif')
+st = osl.utils.Study(fbase)
+inputs = st.match_files
 
-proc_outdir = '/ohba/pi/knobre/ajquinn/lemon/processed_data/'
-proc_outputs = sorted(glob.glob(os.path.join(proc_outdir, 'sub-*_preproc_raw.fif')))
-
-glm_outdir = '/ohba/pi/knobre/ajquinn/lemon/glm_data/'
-
-eye
-
-for fname in proc_outputs:
+for fname in inputs:
     try:
-        run_first_level(fname, glm_outdir)
+        run_first_level(fname, cfg['lemon_glm_data'])
     except Exception as e:
         print(e)
         pass
@@ -217,10 +206,12 @@ for fname in proc_outputs:
 
 #%% -------------------------------------------------------
 
-from anamnesis import obj_from_hdf5file
 
-fnames = sorted(glob.glob(glm_outdir + '/*glm-data.hdf5'))
-df = pd.read_csv('/ohba/pi/knobre/ajquinn/lemon/META_File_IDs_Age_Gender_Education_Drug_Smoke_SKID_LEMON.csv')
+fnames = sorted(glob.glob(cfg['lemon_glm_data'] + '/*glm-data.hdf5'))
+
+fname = 'META_File_IDs_Age_Gender_Education_Drug_Smoke_SKID_LEMON.csv'
+meta_file = os.path.join(os.path.dirname(cfg['lemon_raw'].rstrip('/')), fname)
+df = pd.read_csv(meta_file)
 
 allsubj = np.unique([fname.split('/')[-1].split('_')[0][4:] for fname in fnames])
 allsubj_no = np.arange(len(allsubj))
@@ -250,14 +241,14 @@ for idx, fname in enumerate(fnames):
     model.design_matrix = design.design_matrix
     first_level_null.append(model.copes[None, :, :, :])
     r2_null.append(model.r_square.mean())
-    sw_null.append(model.get_shapiro(data.data).mean())
+    #sw_null.append(model.get_shapiro(data.data).mean())
     aic_null.append(model.aic.mean())
 
     model = obj_from_hdf5file(fname, 'model')
     model.design_matrix = design.design_matrix
     first_level.append(model.copes[None, :, :, :])
     r2.append(model.r_square.mean())
-    sw.append(model.get_shapiro(data.data).mean())
+    #sw.append(model.get_shapiro(data.data).mean())
     aic.append(model.aic.mean())
 
     s_id = fname.split('/')[-1].split('_')[0][4:]
@@ -280,7 +271,7 @@ group_data = glm.data.TrialGLMData(data=first_level, subj_id=subj_id,
                                    subj=subj, task=task, age=age, num_blinks=num_blinks,
                                    sex=sex, scandur=scandur)
 
-outf = os.path.join(glm_outdir, 'lemon_eeg_sensorglm_groupdata.hdf5')
+outf = os.path.join(cfg['lemon_glm_data'], 'lemon_eeg_sensorglm_groupdata.hdf5')
 with h5py.File(outf, 'w') as F:
     group_data.to_hdf5(F.create_group('data'))
     F.create_dataset('aic', data=aic)
@@ -291,7 +282,7 @@ group_data = glm.data.TrialGLMData(data=first_level_null, subj_id=subj_id,
                                    subj=subj, task=task, age=age, num_blinks=num_blinks,
                                    sex=sex, scandur=scandur)
 
-outf = os.path.join(glm_outdir, 'lemon_eeg_sensorglm_groupdata_null.hdf5')
+outf = os.path.join(cfg['lemon_glm_data'], 'lemon_eeg_sensorglm_groupdata_null.hdf5')
 with h5py.File(outf, 'w') as F:
     group_data.to_hdf5(F.create_group('data'))
     F.create_dataset('aic', data=aic_null)

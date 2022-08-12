@@ -20,27 +20,19 @@ from glm_config import cfg
 
 #%% ---------------------------------------------------
 # Load single subject for reference
-from lemon_support import (lemon_set_channel_montage, lemon_ica, lemon_create_heog)
 
-config = osl.preprocessing.load_config('lemon_preproc.yml')
-
-# Drop preproc after montage - only really need the channel info
-config['preproc'] = config['preproc'][:3]
-
-base = '/Users/andrew/Projects/lemon/EEG_Raw_BIDS_ID/sub-010060/RSEEG'
-infile = os.path.join(base, 'sub-010060.vhdr')
-extras = [lemon_set_channel_montage, lemon_ica, lemon_create_heog]
-dataset = osl.preprocessing.run_proc_chain(infile, config, extra_funcs=extras)
-
-raw = dataset['raw'].pick_types(eeg=True)
+fbase = os.path.join(cfg['lemon_processed_data'], 'sub-010002_preproc_raw.fif')
+raw = mne.io.read_raw_fif(fbase).pick_types(eeg=True)
 
 #%% --------------------------------------------------
 # Load first level results and fit group model
 
 #inputs = os.path.join(cfg['lemon_analysis_dir'], 'lemon_eeg_sensorglm_groupdata.hdf5')
-inputs = os.path.join('/Users/andrew/Projects/glm/glm_psd/analysis', 'lemon_eeg_sensorglm_groupdata.hdf5')
+#inputs = os.path.join('/Users/andrew/Projects/glm/glm_psd/analysis', 'lemon_eeg_sensorglm_groupdata.hdf5')
 #inputs2 = os.path.join('/Users/andrew/Projects/glm/glm_psd/analysis', 'lemon_eeg_sensorglm_groupdata_conf.hdf5')
-nulls = os.path.join('/Users/andrew/Projects/glm/glm_psd/analysis', 'lemon_eeg_sensorglm_groupdata_null.hdf5')
+#nulls = os.path.join('/Users/andrew/Projects/glm/glm_psd/analysis', 'lemon_eeg_sensorglm_groupdata_null.hdf5')
+inputs = os.path.join(cfg['lemon_glm_data'], 'lemon_eeg_sensorglm_groupdata.hdf5')
+nulls = os.path.join(cfg['lemon_glm_data'], 'lemon_eeg_sensorglm_groupdata_null.hdf5')
 
 data = obj_from_hdf5file(inputs, 'data')
 datanull = obj_from_hdf5file(nulls, 'data')
@@ -54,58 +46,66 @@ clean_data = data.drop(np.where(bads)[0])
 
 # Load age and sex data
 #df = pd.read_csv('/Users/andrew/Projects/ntad/RA_Interview/LEMON_RA_InterviewData2.csv')
-meta_file = os.path.join(cfg['lemon_raw'], 'META_File_IDs_Age_Gender_Education_Drug_Smoke_SKID_LEMON.csv')
-df = pd.read_csv(meta_file)
-age = []
-sex = []
-for idx, subj in enumerate(data.info['subj_id']):
-    subj = 'sub-' + subj
-    ind = np.where(df['ID'] == subj)[0][0]
-    row = df.iloc[ind]
-    #age.append(row['Age'] + 2.5)
-    age.append(float(row['Age'].split('-')[0]) + 2.5)
-    sex.append(row['Gender_ 1=female_2=male'])
+#meta_file = os.path.join(cfg['lemon_raw'], 'META_File_IDs_Age_Gender_Education_Drug_Smoke_SKID_LEMON.csv')
+#df = pd.read_csv(meta_file)
+#age = []
+#sex = []
+#for idx, subj in enumerate(data.info['subj_id']):
+#    subj = 'sub-' + subj
+#    ind = np.where(df['ID'] == subj)[0][0]
+#    row = df.iloc[ind]
+#    #age.append(row['Age'] + 2.5)
+#    age.append(float(row['Age'].split('-')[0]) + 2.5)
+#    sex.append(row['Gender_ 1=female_2=male'])
+#
+#data.info['age'] = age
+#data.info['sex'] = sex
+#data.info['subj_id'] = list(data.info['subj_id'])
+#
+#datanull.info['age'] = age
+#datanull.info['sex'] = sex
+#datanull.info['subj_id'] = list(datanull.info['subj_id'])
 
-data.info['age'] = age
-data.info['sex'] = sex
-data.info['subj_id'] = list(data.info['subj_id'])
+data.info['age_group'] = list(np.array(data.info['age']) < 45)
 
-datanull.info['age'] = age
-datanull.info['sex'] = sex
-datanull.info['subj_id'] = list(datanull.info['subj_id'])
+fl_contrast_names = ['Mean', 'Open < Closed', 'Eyes Open', 'Eyes Closed', 'Linear Trend', 
+                     'Bad Segments', 'Bad Segments Diff', 'V-EOG', 'H-EOG']
 
-fl_regressor_names = ['Open', 'Closed', 'Linear', 'Bads', 'BadDiffs', 'V-EOG', 'H-EOG']
-confs = h5py.File(inputs, 'r')['confs'][()]
-for ii in range(5):
-    data.info[fl_regressor_names[ii+2]] = confs[:, ii+2]
-    datanull.info[fl_regressor_names[ii+2]] = confs[:, ii+2]
 
-keeps = np.where(np.array(age) < 45)[0]
-drops = np.setdiff1d(np.arange(len(age)), keeps)
-
-data = data.drop(drops)
-datanull = datanull.drop(drops)
+#fl_regressor_names = ['Open', 'Closed', 'Linear', 'Bads', 'BadDiffs', 'V-EOG', 'H-EOG']
+#confs = h5py.File(inputs, 'r')['confs'][()]
+#for ii in range(5):
+#    data.info[fl_regressor_names[ii+2]] = confs[:, ii+2]
+#    datanull.info[fl_regressor_names[ii+2]] = confs[:, ii+2]
+#
+#keeps = np.where(np.array(age) < 45)[0]
+#drops = np.setdiff1d(np.arange(len(age)), keeps)
+#
+#data = data.drop(drops)
+#datanull = datanull.drop(drops)
 
 # Refit group model
+#DC = glm.design.DesignConfig()
+#DC.add_regressor(name='Female', rtype='Categorical', datainfo='sex', codes=1)
+#DC.add_regressor(name='Male', rtype='Categorical', datainfo='sex', codes=2)
+##DC.add_regressor(name='Blinks', rtype='Parametric', datainfo='num_blinks', preproc='z')
+##for ii in range(5):
+##    DC.add_regressor(name=fl_regressor_names[ii+2], rtype='Parametric', datainfo=fl_regressor_names[ii+2], preproc='z')
+#DC.add_contrast(name='GroupMean',values={'Female': 0.5, 'Male': 0.5})
+#DC.add_contrast(name='Female>Male',values={'Female': 1, 'Male': -1})
+#DC.add_simple_contrasts()
+
 DC = glm.design.DesignConfig()
-DC.add_regressor(name='Female', rtype='Categorical', datainfo='sex', codes=1)
-DC.add_regressor(name='Male', rtype='Categorical', datainfo='sex', codes=2)
-#DC.add_regressor(name='Blinks', rtype='Parametric', datainfo='num_blinks', preproc='z')
-#for ii in range(5):
-#    DC.add_regressor(name=fl_regressor_names[ii+2], rtype='Parametric', datainfo=fl_regressor_names[ii+2], preproc='z')
-DC.add_contrast(name='GroupMean',values={'Female': 0.5, 'Male': 0.5})
-DC.add_contrast(name='Female>Male',values={'Female': 1, 'Male': -1})
+DC.add_regressor(name='Young', rtype='Categorical', datainfo='age_group', codes=1)
+DC.add_regressor(name='Old', rtype='Categorical', datainfo='age_group', codes=0)
+DC.add_regressor(name='Sex', rtype='Parametric', datainfo='sex', preproc='z')
 DC.add_simple_contrasts()
+DC.add_contrast(name='Young>Old',values={'Young': 1, 'Old': -1})
 
 design = DC.design_from_datainfo(data.info)
 gmodel = glm.fit.OLSModel(design, data)
 gmodel_null = glm.fit.OLSModel(design, datanull)
 
-# Housekeeping and rescaling
-#fl_contrast_names = ['Mean', 'Linear Trend', 'Eyes Open>Closed', 'Bad Segments', 'VEOG', 'HEOG']
-fl_contrast_names = ['Mean', 'Eyes Open>Closed', 'Eyes Open', 'Eyes Closed',
-                     'Linear Trend', 'Bad Segments', 'Bad Segments Diff', 'VEOG', 'HEOG']
-gl_contrast_names = gmodel.contrast_names
 
 with h5py.File(os.path.join(cfg['lemon_analysis_dir'], 'lemon-group_glm-data.hdf5'), 'w') as F:
      gmodel.to_hdf5(F.create_group('model'))
@@ -116,6 +116,11 @@ fout = os.path.join(cfg['lemon_analysis_dir'], 'lemon-group_glm-design.png')
 design.plot_summary(show=False, savepath=fout)
 fout = os.path.join(cfg['lemon_analysis_dir'], 'lemon-group_glm-efficiency.png')
 design.plot_efficiency(show=False, savepath=fout)
+
+#%% ------------------------------------------------------
+
+
+
 
 
 #%% ------------------------------------------------------

@@ -12,10 +12,6 @@ cfg['yaml_path'] = yaml_path
 cfg['code_dir'] = code_dir
 
 # Check LEMON
-cfg['lemon_analysis_dir'] = os.path.join(cfg['lemon_output_dir'], 'analysis')
-cfg['lemon_preprocessed_data_dir'] = os.path.join(cfg['lemon_output_dir'], 'preprocessed_data')
-cfg['lemon_glm_data_dir'] = os.path.join(cfg['lemon_output_dir'], 'glm_data')
-
-cfg['camcan_analysis_dir'] = os.path.join(cfg['camcan_output_dir'], 'analysis')
-cfg['camcan_preprocessed_data_dir'] = os.path.join(cfg['camcan_output_dir'], 'preprocessed_data')
-cfg['camcan_glm_data_dir'] = os.path.join(cfg['camcan_output_dir'], 'glm_data')
+cfg['lemon_raw_eeg'] = os.path.join(cfg['lemon_raw'], 'EEG_Raw_BIDS_ID')
+cfg['lemon_processed_data'] = os.path.join(cfg['lemon_output'], 'preprocessed_data')
+cfg['lemon_glm_data'] = os.path.join(cfg['lemon_output'], 'glm_data')

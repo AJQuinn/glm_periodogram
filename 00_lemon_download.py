@@ -5,8 +5,12 @@ import urllib.request
 
 from pathlib import Path
 
-datadir = '/Users/andrew/Projects/lemon/data'
-datadir = os.path.join(datadir, 'EEG_Raw_BIDS_ID')
+from glm_config import cfg
+
+#%% ------------------------------------------------------------
+# Download raw EEG data
+
+datadir = cfg['lemon_raw_eeg']
 
 url = 'https://ftp.gwdg.de/pub/misc/MPI-Leipzig_Mind-Brain-Body-LEMON/EEG_MPILMBB_LEMON/EEG_Raw_BIDS_ID/'
 r = requests.get(url)
@@ -32,3 +36,19 @@ for l in data.find_all("a"):
             print(local_file)
 
             urllib.request.urlretrieve(remote_file, filename=local_file)
+
+
+#%% ------------------------------------------------------------
+# Download Subject metadata
+
+
+datadir = cfg['lemon_raw']
+fname = 'META_File_IDs_Age_Gender_Education_Drug_Smoke_SKID_LEMON.csv'
+
+url = 'https://ftp.gwdg.de/pub/misc/MPI-Leipzig_Mind-Brain-Body-LEMON/Behavioural_Data_MPILMBB_LEMON/'
+url += fname
+
+local_file = os.path.join(os.path.dirname(cfg['lemon_raw'].rstrip('/')), fname)
+urllib.request.urlretrieve(url, filename=local_file)
+
+
