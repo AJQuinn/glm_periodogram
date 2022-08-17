@@ -38,6 +38,15 @@ for l in data.find_all("a"):
             urllib.request.urlretrieve(remote_file, filename=local_file)
 
 
+#%% ---------------------------
+#
+# header errors (wrong DataFile and MarkerFile) in:
+# sub-010193.vhdr
+# sub-010219.vhdr
+#
+# Can be fixed by hand
+
+
 #%% ------------------------------------------------------------
 # Download Subject metadata
 
