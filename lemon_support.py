@@ -37,6 +37,34 @@ def lemon_set_channel_montage(dataset, userargs):
 
     return dataset
 
+    
+def get_eeg_data(raw, csd=True):
+    """Load EEG and perform sanity checks."""
+
+    # Use first scan as reference for channel labels and order
+    fbase = os.path.join(cfg['lemon_processed_data'], 'sub-010002_preproc_raw.fif')
+    reference = mne.io.read_raw_fif(fbase).pick_types(eeg=True)
+    mon = reference.get_montage()
+
+    # Load ideal layout and match data-channels
+    raw = raw.copy().pick_types(eeg=True)
+    ideal_inds = [mon.ch_names.index(c) for c in raw.info['ch_names']]
+
+    if csd:
+        # Apply laplacian if requested
+        raw = mne.preprocessing.compute_current_source_density(raw)
+        X = raw.get_data(picks='csd')
+    else:
+        # Get data from EEG picks
+        X = raw.get_data(picks='eeg')
+
+    # Preallocate & store ouput
+    Y = np.zeros((len(mon.ch_names), X.shape[1]))
+
+    Y[ideal_inds, :] = X
+
+    return Y
+
 
 def lemon_create_heog(dataset, userargs):
     logger.info('LEMON Stage - Create HEOG from F7 and F8')

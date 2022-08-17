@@ -15,3 +15,4 @@ cfg['code_dir'] = code_dir
 cfg['lemon_raw_eeg'] = os.path.join(cfg['lemon_raw'], 'EEG_Raw_BIDS_ID')
 cfg['lemon_processed_data'] = os.path.join(cfg['lemon_output'], 'preprocessed_data')
 cfg['lemon_glm_data'] = os.path.join(cfg['lemon_output'], 'glm_data')
+cfg['lemon_figures'] = os.path.join(cfg['lemon_output'], 'figures')
