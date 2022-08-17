@@ -215,19 +215,19 @@ def plot_joint_spectrum(ax, psd, raw, xvect, freqs='auto', base=1, topo_scale='j
             print('Crossing')
             dat = dat / np.abs(dat).max()
             im, cn = mne.viz.plot_topomap(dat, raw.info, axes=topo, cmap='RdBu_r',
-                                          vmin=-1, vmax=1)
+                                          vmin=-1, vmax=1, show=False)
         elif np.unique(np.sign(dat)) == [1]:
             print('Positive')
             dat = dat - dat.min()
             dat = dat / dat.max()
             im, cn = mne.viz.plot_topomap(dat, raw.info, axes=topo, cmap='Reds',
-                                          vmin=0, vmax=1)
+                                          vmin=0, vmax=1, show=False)
         elif np.unique(np.sign(dat)) == [-1]:
             print('Negative')
             dat = dat - dat.max()
             dat = -(dat / dat.min())
             im, cn = mne.viz.plot_topomap(-dat, raw.info, axes=topo, cmap='Blues',
-                                          vmin=0, vmax=1)
+                                          vmin=0, vmax=1, show=False)
         print('{} - {}'.format(dat.min(), dat.max()))
 
         # Add angled connecting line
@@ -335,17 +335,20 @@ def plot_sensorspace_clusters(dat, P, raw, ax, xvect=None, ylabel='Power', topo_
         if len(np.unique(np.sign(dat))) == 2:
             dat = dat / np.abs(dat).max()
             im, cn = mne.viz.plot_topomap(dat, raw.info, axes=topo, cmap='RdBu_r',
-                                          vmin=-1, vmax=1, mask=channels.astype(int))
+                                          vmin=-1, vmax=1, mask=channels.astype(int),
+                                          show=False)
         elif np.unique(np.sign(dat)) == [1]:
             dat = dat - dat.min()
             dat = dat / dat.max()
             im, cn = mne.viz.plot_topomap(dat, raw.info, axes=topo, cmap='Reds',
-                                          vmin=0, vmax=1, mask=channels.astype(int))
+                                          vmin=0, vmax=1, mask=channels.astype(int),
+                                          show=False)
         elif np.unique(np.sign(dat)) == [-1]:
             dat = dat - dat.max()
             dat = dat / dat.min()
             im, cn = mne.viz.plot_topomap(dat, raw.info, axes=topo, cmap='Blues_r',
-                                          vmin=-1, vmax=0, mask=channels.astype(int))
+                                          vmin=-1, vmax=0, mask=channels.astype(int),
+                                          show=False)
 
         #if norm is not None:
         #    im.set_norm(norm)

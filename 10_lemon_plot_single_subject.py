@@ -27,155 +27,31 @@ outdir = cfg['lemon_figures']
 
 #%% --------------------------------------------------
 # Load dataset
-# This assumes that 01_lemon_preproc has been run for at least sub-010060
-
-#from lemon_support import (lemon_make_blinks_regressor,
-#                           lemon_make_task_regressor,
-#                           lemon_make_bads_regressor,
-#                           lemon_set_channel_montage,
-#                           lemon_ica, lemon_check_ica,
-#                           lemon_create_heog, plot_design)
-#config = osl.preprocessing.load_config('lemon_preproc.yml')
-#pprint.pprint(config)
-
-# 010003 010010 010050 010060 010089
-#subj_id = '010060'
-#mode = 'full'
-
-#base = '/Users/andrew/Projects/lemon/EEG_Raw_BIDS_ID/sub-{subj_id}/RSEEG'.format(subj_id=subj_id)
-#infile = os.path.join(base, 'sub-{subj_id}.vhdr'.format(subj_id=subj_id))
-#extras = [lemon_set_channel_montage, lemon_ica, lemon_create_heog]
-#dataset = osl.preprocessing.run_proc_chain(infile, config,
-#                                           extra_funcs=extras,
-#                                           outname='sub-{subj_id}_proc-full'.format(subj_id=subj_id),
-#                                           outdir=outdir,
-#                                           overwrite=True)
-
-#fout = os.path.join(outdir, 'sub-{subj_id}_proc-full_flowchart.png'.format(subj_id=subj_id))
-#osl.preprocessing.plot_preproc_flowchart(config)
-#plt.savefig(fout, dpi=300, transparent=True)
-#fout = os.path.join(outdir, 'sub-{subj_id}_proc-full_icatopos.png'.format(subj_id=subj_id))
-#lemon_check_ica(dataset, fout)
 
 fbase = os.path.join(cfg['lemon_processed_data'], '{subj}_preproc_raw.fif')
 st = osl.utils.Study(fbase)
 
-fname = st.get(subj='sub-010060')
+subj_id = 'sub-010319'
+
+fname = st.get(subj=subj_id)
 dataset = {}
 dataset['raw'] = mne.io.read_raw_fif(fname[0], preload=True)
 dataset['ica'] = mne.preprocessing.read_ica(fname[0].replace('preproc_raw.fif', 'ica.fif'))
 
+rawref = dataset['raw'].copy().pick_types(eeg=True)
 
-#%% ----------------------------------------------------
-
-# GLM-Prep
-
-# Make blink regressor
-#fout = os.path.join(outdir, 'sub-{subj_id}_proc-{mode}_blink-summary.png'.format(subj_id=subj_id, mode=mode))
-#blink_vect, numblinks, evoked_blink = lemon_make_blinks_regressor(dataset['raw'], figpath=fout)
-
-#veog = dataset['raw'].get_data(picks='ICA-VEOG')[0, :]**2
-#thresh = np.percentile(veog, 97.5)
-#veog = veog>thresh
-
-#heog = dataset['raw'].get_data(picks='ICA-HEOG')[0, :]**2
-#thresh = np.percentile(heog, 97.5)
-#heog = heog>thresh
-
-# Make task regressor
-#task = lemon_make_task_regressor(dataset)
-
-# Make bad-segments regressor
-#bads_raw = lemon_make_bads_regressor(dataset, mode='raw')
-#bads_diff = lemon_make_bads_regressor(dataset, mode='diff')
-
-#bads[blink_vect>0] = 0
-
-#%% --------------------------------------------------------
-# GLM
-
-#raw = dataset['raw']
-#rawref = dataset['raw'].copy().pick(mne.pick_types(dataset['raw'].info, csd=True))
-#rawref = dataset['raw'].copy().pick_types(csd=True)
-#rawref = dataset['raw'].copy().pick_types(eeg=True)
-
-#XX = raw.get_data(picks='csd').T
-#XX = raw.get_data(picks='eeg').T
-#XX = stats.zscore(XX, axis=0)
-
-#conds = {'Eyes Open': task == 1, 'Eyes Closed': task == -1}
-#covs = {'Linear Trend': np.linspace(0, 1, dataset['raw'].n_times)}
-#confs = {'Bad Segments': bads_raw, 'Bad Segments Diff': bads_diff, 'V-EOG': veog, 'H-EOG': heog}
-#conts = [{'name': 'Mean', 'values':{'Eyes Open': 0.5, 'Eyes Closed': 0.5}},
-#         {'name': 'Open < Closed', 'values':{'Eyes Open': 1, 'Eyes Closed': -1}}]
-#fs = dataset['raw'].info['sfreq']
-#freq_vect, copes, varcopes, extras = sails.stft.glm_periodogram(XX, axis=0,
-#                                                                fit_constant=False,
-#                                                                conditions=conds,
-#                                                                covariates=covs,
-#                                                                confounds=confs,
-#                                                                contrasts=conts,
-#                                                                nperseg=int(fs*2),
-#                                                                fmin=0.1, fmax=100,
-#                                                                fs=fs, mode='magnitude',
-#                                                                fit_method='glmtools')
-#model, design, data = extras
-#data.info['dim_labels'] = ['Windows', 'Frequencies', 'Sensors']
-#eye
-
-#hdfname = os.path.join(outdir, 'sub-{subj_id}_proc-{mode}_glm-data.hdf5'.format(subj_id=subj_id, mode=mode))
-#if os.path.exists(hdfname):
-#    print('Overwriting previous results')
-#    os.remove(hdfname)
-#with h5py.File(hdfname) as F:
-#     model.to_hdf5(F.create_group('model'))
-#     design.to_hdf5(F.create_group('design'))
-#     data.to_hdf5(F.create_group('data'))
-
-#fout = os.path.join(outdir, 'sub-{subj_id}_proc-{mode}_glm-design.png'.format(subj_id=subj_id, mode=mode))
-#design.plot_summary(show=False, savepath=fout)
-#fout = os.path.join(outdir, 'sub-{subj_id}_proc-{mode}_glm-efficiency.png'.format(subj_id=subj_id, mode=mode))
-#design.plot_efficiency(show=False, savepath=fout)
-
+# Load GLM Results
 st = osl.utils.Study(os.path.join(cfg['lemon_glm_data'], '{subj}_preproc_raw_glm-data.hdf5'))
-fname = st.get(subj='sub-010060')[0]
+fname = st.get(subj=subj_id)[0]
 
 XX = get_eeg_data(dataset['raw']).T
 model = obj_from_hdf5file(fname, 'model')
 design = obj_from_hdf5file(fname, 'design')
 data = obj_from_hdf5file(fname, 'data')
 
-
-
-#%% ---------------------------------------------------------
-
-
-#freq_vect, copes2, varcopes, extras2 = sails.stft.glm_periodogram(XX, axis=0,
-#                                                                fit_constant=False,
-#                                                                conditions=conds,
-#                                                                contrasts=conts,
-#                                                                nperseg=int(fs*2),
-#                                                                fmin=0.1, fmax=100,
-#                                                                fs=fs, mode='magnitude',
-#                                                                fit_method='glmtools')
-#model2, design2, data2 = extras2
-#
-#resids = model.get_residuals(data.data)
-#resids2 = model2.get_residuals(data2.data)
-#
-## Shapiro-Wilks test statistic is around 1 for gaussian data and LOWER for
-## non-gaussian data. For example
-##
-## stats.shapiro(np.random.randn(1000)) ~= 1
-## stats.shapiro(np.random.randn(1000)**2) ~= 0.7
-#
-#sw = np.zeros((2, 200, 61))
-#for jj in range(200):
-#    for kk in range(61):
-#        sw[0, jj,kk], p = stats.shapiro(resids[:, jj, kk])
-#        sw[1, jj,kk], p = stats.shapiro(resids2[:, jj, kk])
-
-
+# This shouldn't be necessary...
+model.design_matrix = design.design_matrix
+model.regressor_list = design.regressor_list
 
 #%% ---------------------------------------------------------
 # Single channel example figure 1
@@ -184,48 +60,17 @@ sensor = 'Pz'
 fs = dataset['raw'].info['sfreq']
 
 ch_ind = mne.pick_channels(dataset['ica'].ch_names, [sensor])[0]
+YY = XX[:, ch_ind]
 
 # Extract data segment
 inds = np.arange(140*fs, 160*fs)
 inds = np.arange(770*fs, 790*fs).astype(int)
 inds = np.arange(520*fs, 550*fs).astype(int)
 
-#XX = stats.zscore(dataset['raw'].get_data(picks=sensor)[:, inds].T, axis=0)
-#mini_task = task[inds]
 eog = dataset['raw'].copy().pick_types(eog=True, eeg=False)
 eog.filter(l_freq=1, h_freq=25, picks='eog')
 eog = eog.get_data(picks='eog')[:, inds].T
 time = np.linspace(0, XX.shape[0]/fs, XX.shape[0])
-
-# Compute STFT for data segment
-#config = sails.stft.PeriodogramConfig(input_len=XX.shape[0],
-#                                      fs=fs, nperseg=int(fs*2),
-#                                      axis=0, fmin=0.1, fmax=100)
-#config_flat = sails.stft.PeriodogramConfig(input_len=XX.shape[0],
-#                                           fs=fs, nperseg=int(fs*2),
-#                                           axis=0, fmin=0.1, fmax=100,
-#                                           window_type='boxcar')
-
-#condss = {'Eyes Open': (task == 1)[inds], 'Eyes Closed': (task == -1)[inds]}
-#covss = {'Linear Trend': np.linspace(0, 1, len(inds))}
-#confss = {'Bad Segments': bads_raw[inds], 'Bad Segments Diff': bads_diff[inds],
-#          'V-EOG': veog[inds], 'H-EOG': heog[inds]}
-#contss = [{'name': 'Mean', 'values':{'Eyes Open': 0.5, 'Eyes Closed': 0.5}},
-#         {'name': 'Open > Closed', 'values':{'Eyes Open': 1, 'Eyes Closed': -1}}]
-
-# Compute mini-model to get design matrix
-#f, copes, varcopes, extras_s = sails.stft.glm_periodogram(XX, axis=0,
-#                                                          conditions=condss,
-#                                                          covariates=covss,
-#                                                          confounds=confss,
-#                                                          contrasts=contss,
-#                                                          fit_constant=False,
-#                                                          nperseg=int(fs*2),
-#                                                          fmin=0.1, fmax=100,
-#                                                          fs=fs, mode='magnitude',
-#                                                          fit_method='glmtools')
-#
-#model_short, design_short, data_short = extras_s
 
 config = sails.stft.PeriodogramConfig(input_len=XX.shape[0],
                                       nperseg=int(fs*2),
@@ -266,8 +111,8 @@ fx, ftl, ft = lemon_plotting.prep_scaled_freq(0.5, f)
 #%% ------------------------------------------------------------
 # Make figure 2
 
-wlagX = sails.stft.apply_sliding_window(dataset['raw'].get_data(picks=sensor),**config.sliding_window_args)[0, stft_inds ,:]
-lagX = sails.stft.apply_sliding_window(dataset['raw'].get_data(picks=sensor),**config_flat.sliding_window_args)[0, stft_inds, :]
+wlagX = sails.stft.apply_sliding_window(YY,**config.sliding_window_args)[stft_inds ,:]
+lagX = sails.stft.apply_sliding_window(YY,**config_flat.sliding_window_args)[stft_inds, :]
 
 panel_label_height = 1.075
 plt.figure(figsize=(16, 9))
@@ -279,8 +124,8 @@ ax_des = plt.axes([0.7, 0.1, 0.25, 0.8])
 ax_des_cb = plt.axes([0.96, 0.15, 0.01, 0.2])
 
 # Plot continuous time series
-scale = 1 / (np.std(dataset['raw'].get_data(picks=sensor)[0, inds]) * 4)
-ax_ts.plot(scale*dataset['raw'].get_data(picks=sensor)[0, inds], time[inds] - time[inds[0]], 'k', lw=0.5)
+scale = 1 / (np.std(YY) * 4)
+ax_ts.plot(scale*YY[inds], time[inds] - time[inds[0]], 'k', lw=0.5)
 
 # Plot window markers + guidelines
 for ii in range(stft.shape[0]):
@@ -336,35 +181,36 @@ ax_des.text(0.25, panel_label_height, 'GLM Design Matrix', ha='center', transfor
 plt.colorbar(pcm, cax=ax_des_cb)
 lemon_plotting.subpanel_label(ax_des, 'E', xf=-0.02, yf=panel_label_height)
 
-eye
 
-fout = os.path.join(outdir, 'sub-{subj_id}_single-channel_glm-top.png'.format(subj_id=subj_id))
+fout = os.path.join(outdir, '{subj_id}_single-channel_glm-top.png'.format(subj_id=subj_id))
 plt.savefig(fout, dpi=300, transparent=True)
 
 
 #%% ---------------------------------------------------------
+# Single channel permutation statistics
 
 tstat_args = {'hat_factor': 5e-3, 'varcope_smoothing': 'medfilt', 'window_size': 15, 'smooth_dims': 1}
 tstat_args2 = {'hat_factor': 5e-3, 'varcope_smoothing': 'medfilt', 'window_size': 15, 'smooth_dims': 0}
 
-ch_ind = mne.pick_channels(raw.ch_names, [sensor])[0]
-data_cz = deepcopy(data)
-data_cz.data = data.data[:, :, ch_ind]
+data_pz = deepcopy(data)
+data_pz.data = data.data[:, :, ch_ind]
 
 con_ind = [1, 7]
 
-P1 = glm.permutations.ClusterPermutation(design, data_cz, con_ind[0], 500,
+P1 = glm.permutations.ClusterPermutation(design, data_pz, con_ind[0], 500,
                                          pooled_dims=[1],
                                          tstat_args=tstat_args,
                                          cluster_forming_threshold=3,
                                          metric='tstats')
 # BLINKS
-P2 = glm.permutations.ClusterPermutation(design, data_cz, con_ind[1], 500,
+P2 = glm.permutations.ClusterPermutation(design,data_pz, con_ind[1], 500,
                                          pooled_dims=[1],
                                          tstat_args=tstat_args,
                                          cluster_forming_threshold=3,
                                          metric='tstats')
 
+#%% ---------------------------------------------
+# Bottom of figure 1
 
 fig = plt.figure(figsize=(16, 6))
 ax = plt.axes([0.075, 0.2, 0.25, 0.6])
@@ -398,10 +244,11 @@ for ii in range(len(con_ind)):
 
     ax = plt.axes([0.4+ii*0.3, 0.1, 0.25, 0.5])
     P = P1 if ii == 0 else P2
-    clu = P.get_sig_clusters(data_cz, 99)
-    for idx, c in enumerate(clu[1]):
-        tinds = np.where(clu[0]==idx+1)[0]
-        ax.axvspan(fx[tinds[0]], fx[tinds[-1]], facecolor=[0.7, 0.7, 0.7], alpha=0.5)
+    clu = P.get_sig_clusters(data_pz, 99)
+    if clu[0] is not None:
+        for idx, c in enumerate(clu[1]):
+            tinds = np.where(clu[0]==idx+1)[0]
+            ax.axvspan(fx[tinds[0]], fx[tinds[-1]], facecolor=[0.7, 0.7, 0.7], alpha=0.5)
     ts = glm.fit.get_tstats(model.copes[con_ind[ii], :, ch_ind], model.varcopes[con_ind[ii], :, ch_ind], **tstat_args2)
     ax.plot(fx, ts)
     name = model.contrast_names[P.contrast_idx]
@@ -414,13 +261,15 @@ for ii in range(len(con_ind)):
     plt.xlabel('Frequency (Hz)')
     plt.ylabel('t-statistic')
 
-fout = os.path.join(outdir, 'sub-{subj_id}_single-channel_glm-bottom.png'.format(subj_id=subj_id))
+fout = os.path.join(outdir, '{subj_id}_single-channel_glm-bottom.png'.format(subj_id=subj_id))
 plt.savefig(fout, dpi=300, transparent=True)
 
 
 #%% --------------------------------------------------------
+# Whole head permutation statistics
 
-adjacency, ch_names = mne.channels.channels._compute_ch_adjacency(raw.info, 'csd')
+
+adjacency, ch_names = mne.channels.channels._compute_ch_adjacency(dataset['raw'].info, 'eeg')
 ntests = np.prod(data.data.shape[1:])
 ntimes = data.data.shape[1]
 adjacency = mne.stats.cluster_level._setup_adjacency(adjacency, ntests, ntimes)
@@ -429,12 +278,12 @@ cft = 3
 tstat_args = {'hat_factor': 5e-3, 'varcope_smoothing': 'medfilt', 'window_size': 15, 'smooth_dims': 1}
 
 P = []
-run_perms = False
+run_perms = True
 for icon in range(1, design.num_contrasts):
-    fpath = os.path.join(outdir, 'sub-{subj_id}_proc-{mode}_perms-con{icon}.pkl'.format(subj_id=subj_id, mode=mode, icon=icon))
+    fpath = os.path.join(outdir, '{subj_id}_perms-con{icon}.pkl'.format(subj_id=subj_id, icon=icon))
     if run_perms:
-        p = glm.permutations.MNEClusterPermutation(design, data, icon, 250,
-                                                   nprocesses=3,
+        p = glm.permutations.MNEClusterPermutation(design, data, icon, 150,
+                                                   nprocesses=8,
                                                    metric='tstats',
                                                    tstat_args=tstat_args,
                                                    cluster_forming_threshold=cft,
@@ -450,6 +299,7 @@ for icon in range(1, design.num_contrasts):
 
 
 #%% --------------------------------------------------------
+# Whole head GLM single subject figure
 
 ll = [['Rec Start', 'Rec End'],
       ['Good Seg', 'Bad Seg'],
@@ -463,20 +313,20 @@ col_heads = ['Mean', 'Linear Trend', 'Rest Condition', 'Bad Segments', 'VEOG', '
 plt.figure(figsize=(16, 16))
 ax = plt.axes([0.075, 0.6, 0.175, 0.2])
 ax.set_ylim(0, 2e-5)
-lemon_plotting.plot_joint_spectrum(ax, model.copes[2, :, :], rawref, xvect=freq_vect,
+lemon_plotting.plot_joint_spectrum(ax, model.copes[2, :, :], rawref, xvect=f,
                         freqs=[9], base=0.5, topo_scale=None,
                         ylabel='Amplitude', title=model.contrast_names[2])
 lemon_plotting.subpanel_label(ax, chr(65), yf=1.6)
 
 ax = plt.axes([0.3125, 0.6, 0.175, 0.2])
 ax.set_ylim(0, 2e-5)
-lemon_plotting.plot_joint_spectrum(ax, model.copes[3, :, :], rawref, xvect=freq_vect,
+lemon_plotting.plot_joint_spectrum(ax, model.copes[3, :, :], rawref, xvect=f,
                         freqs=[9], base=0.5, topo_scale=None,
                         ylabel='Amplitude', title=model.contrast_names[3])
 lemon_plotting.subpanel_label(ax, chr(66), yf=1.6)
 
 ax = plt.axes([0.55, 0.6, 0.175, 0.3])
-lemon_plotting.plot_sensorspace_clusters(data, P[0], rawref, ax, xvect=freq_vect,
+lemon_plotting.plot_sensorspace_clusters(data, P[0], rawref, ax, xvect=f,
                               ylabel='t-stat', base=0.5, topo_scale=None,
                               title=model.contrast_names[P[0].contrast_idx])
 lemon_plotting.subpanel_label(ax, chr(67), yf=1.6)
@@ -486,7 +336,7 @@ lemon_plotting.plot_channel_layout(ax, rawref, size=100)
 
 for ii in range(5):
     ax = plt.axes([0.065+ii*0.195, 0.25, 0.125, 0.2])
-    lemon_plotting.plot_sensorspace_clusters(data, P[ii+3], rawref, ax, xvect=freq_vect,
+    lemon_plotting.plot_sensorspace_clusters(data, P[ii+3], rawref, ax, xvect=f,
                                   ylabel='t-stat', base=0.5, topo_scale=None,
                                   title=model.contrast_names[P[ii+3].contrast_idx])
     lemon_plotting.subpanel_label(ax, chr(68+ii), yf=1.6)
@@ -494,16 +344,17 @@ for ii in range(5):
     ax2 = plt.axes([0.065+ii*0.195, 0.07, 0.125, 0.2*2/3])
     ax2.set_ylim(0, 1.5e-5)
     proj,llabels = model.project_range(P[ii+3].contrast_idx-2, nsteps=2)
-    lemon_plotting.plot_sensor_data(ax2, proj.mean(axis=2).T, rawref, xvect=freq_vect, base=0.5, sensor_cols=False, lw=2)
+    lemon_plotting.plot_sensor_data(ax2, proj.mean(axis=2).T, rawref, xvect=f, base=0.5, sensor_cols=False, lw=2)
     ylabel = 'Amplitude' if ii == 0 else ''
     lemon_plotting.decorate_spectrum(ax2, ylabel=ylabel)
     ax2.legend(ll[ii], frameon=False, fontsize=8)
     ax.set_title(model.contrast_names[P[ii+3].contrast_idx])
 
-fout = os.path.join(outdir, 'sub-{subj_id}_proc-{mode}_glm-summary.png'.format(subj_id=subj_id, mode=mode))
+fout = os.path.join(outdir, '{subj_id}_whole-head-glm-summary.png'.format(subj_id=subj_id))
 plt.savefig(fout, dpi=300, transparent=True)
 
 #%% --------------------------------------------------------
+# Model selection & r-squared
 
 models = glm.fit.run_regressor_selection(design, data)
 
@@ -516,9 +367,9 @@ for ii in range(8):
     ax = plt.subplot(3, 4, ii+1)
     change =  models[ii].r_square[0, :, :] * 100
     if ii == 3:
-        lemon_plotting.plot_sensor_spectrum(ax, change, rawref, freq_vect, base=0.5, sensor_proj=True)
+        lemon_plotting.plot_sensor_spectrum(ax, change, rawref, f, base=0.5, sensor_proj=True)
     else:
-        lemon_plotting.plot_sensor_spectrum(ax, change, rawref, freq_vect, base=0.5)
+        lemon_plotting.plot_sensor_spectrum(ax, change, rawref, f, base=0.5)
     ax.set_ylabel('R-squared (%)')
     label = 'Full Model' if ii == 0 else "'{0}' only".format(models[0].regressor_names[ii-1])
     ax.set_title(label)
@@ -543,20 +394,14 @@ pos[2] -= 0.2
 ax.set_position(pos)
 lemon_plotting.subpanel_label(ax, chr(65+8))
 
-fout = os.path.join(outdir, 'sub-{subj_id}_proc-{mode}_glm-modelselection.png'.format(subj_id=subj_id, mode=mode))
+fout = os.path.join(outdir, '{subj_id}_whole-head_glm-modelselection.png'.format(subj_id=subj_id))
 plt.savefig(fout, dpi=300, transparent=True)
 
-
 #%% -------------------------------
+# Whole run model fit
 
-freq_vect = f
-nperseg = int(fs*2)
-nstep = nperseg/2
-noverlap = nperseg - nstep
-time = np.arange(nperseg/2, dataset['raw'].n_times - nperseg/2 + 1,
-                 nperseg - noverlap)/float(dataset['raw'].info['sfreq'])
-
-#model, design, data = extras4
+time = np.arange(config.nperseg/2, dataset['raw'].n_times - config.nperseg/2 + 1,
+                 config.nperseg - config.noverlap)/float(dataset['raw'].info['sfreq'])
 
 vmin = 0
 vmax = 3e-5#None #0.0025
@@ -565,7 +410,7 @@ chan = ch_ind
 plt.figure(figsize=(16, 10))
 plt.subplots_adjust(right=0.975, top=0.9, hspace=0.4)
 plt.subplot(411)
-plt.pcolormesh(time, freq_vect, data.data[:, :, chan].T, vmin=vmin, vmax=vmax, cmap='magma_r')
+plt.pcolormesh(time, f, data.data[:, :, chan].T, vmin=vmin, vmax=vmax, cmap='magma_r')
 plt.xticks(np.arange(18)*60, np.arange(18))
 plt.ylabel('Frequency (Hz)')
 plt.title('STFT Data')
@@ -585,7 +430,7 @@ fit = np.dot(design.design_matrix[:, regs], model.betas[regs, :, chan])
 plt.subplot(413)
 plt.xticks(np.arange(18)*60, np.arange(18))
 plt.ylabel('Frequency (Hz)')
-plt.pcolormesh(time, freq_vect, fit.T, vmin=vmin, vmax=vmax, cmap='magma_r')
+plt.pcolormesh(time, f, fit.T, vmin=vmin, vmax=vmax, cmap='magma_r')
 plt.title('Mean + Covariate Regressors')
 plt.colorbar()
 lemon_plotting.subpanel_label(plt.gca(), 'C')
@@ -596,10 +441,10 @@ plt.subplot(414)
 plt.xticks(np.arange(18)*60, np.arange(18))
 plt.ylabel('Frequency (Hz)')
 plt.xlabel('Time (mins)')
-plt.pcolormesh(time, freq_vect, fit.T, vmin=vmin, vmax=vmax, cmap='magma_r')
+plt.pcolormesh(time, f, fit.T, vmin=vmin, vmax=vmax, cmap='magma_r')
 plt.title('Confound Regressors Only')
 plt.colorbar()
 lemon_plotting.subpanel_label(plt.gca(), 'D')
 
-fout = os.path.join(outdir, 'sub-{subj_id}_single-channel_glm-singlechanTF.png'.format(subj_id=subj_id))
+fout = os.path.join(outdir, '{subj_id}_single-channel_glm-singlechanTF.png'.format(subj_id=subj_id))
 plt.savefig(fout, dpi=300, transparent=True)

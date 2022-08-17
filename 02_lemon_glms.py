@@ -17,38 +17,16 @@ from lemon_support import (lemon_make_blinks_regressor,
                            lemon_make_bads_regressor,
                            quick_plot_eog_icas,
                            quick_plot_eog_epochs,
+                           get_eeg_data,
                            lemon_create_heog,
                            lemon_ica, lemon_check_ica)
 
 from glm_config import cfg
 
+#%% --------------------------------------------------------------
+# Functions for first level analysis
 
-def get_eeg_data(raw, csd=True):
-    """Load EEG and perform sanity checks."""
 
-    # Use first scan as reference for channel labels and order
-    fbase = os.path.join(cfg['lemon_processed_data'], 'sub-010002_preproc_raw.fif')
-    reference = mne.io.read_raw_fif(fbase).pick_types(eeg=True)
-    mon = reference.get_montage()
-
-    # Load ideal layout and match data-channels
-    raw = raw.copy().pick_types(eeg=True)
-    ideal_inds = [mon.ch_names.index(c) for c in raw.info['ch_names']]
-
-    if csd:
-        # Apply laplacian if requested
-        raw = mne.preprocessing.compute_current_source_density(raw)
-        X = raw.get_data(picks='csd')
-    else:
-        # Get data from EEG picks
-        X = raw.get_data(picks='eeg')
-
-    # Preallocate & store ouput
-    Y = np.zeros((len(mon.ch_names), X.shape[1]))
-
-    Y[ideal_inds, :] = X
-
-    return Y
 
 def run_first_level(fname, outdir):
     runname = fname.split('/')[-1].split('.')[0]
@@ -77,10 +55,6 @@ def run_first_level(fname, outdir):
     fout = os.path.join(outdir, '{subj_id}_{0}.png'.format('{0}', subj_id=subj_id))
     quick_plot_eog_epochs(raw, figpath=fout)
 
-    # No reason to square if binarising?
-    #veog = make_eog_regressor(raw.get_data(picks='ICA-VEOG')[0, :])
-    #heog = make_eog_regressor(raw.get_data(picks='ICA-HEOG')[0, :])
-
     veog = raw.get_data(picks='ICA-VEOG')[0, :]**2
     veog = veog > np.percentile(veog, 97.5)
 
@@ -96,13 +70,9 @@ def run_first_level(fname, outdir):
 
     # Get data
     XX = get_eeg_data(raw).T
-    #XX = stats.zscore(XX, axis=0)
     print(XX.shape)
 
     # Run GLM-Periodogram
-    #covs = {'Linear Trend': np.linspace(0, 1, raw.n_times),
-    #        'Eyes Open>Closed': task}
-    #cons = {'Bad Segments': bads, 'V-EOG': veog, 'H-EOG': heog}
     conds = {'Eyes Open': task == 1, 'Eyes Closed': task == -1}
     covs = {'Linear Trend': np.linspace(0, 1, raw.n_times)}
     confs = {'Bad Segments': bads_raw,
@@ -190,11 +160,25 @@ def quick_plot_firstlevel(hdfname, rawpath):
     plt.savefig(outf, dpi=300)
     plt.close('all')
 
+
+#%% ---------------------------------------------------------
+# Select datasets to run
+
+subj = 'all'  # Set to 'sub-010060' to run single subject in paper examples
+
+#%% -----------------------------------------------------------
+#  Run first level GLMs - probably should dask-ify this...
+
 proc_outdir = cfg['lemon_processed_data']
 
 fbase = os.path.join(cfg['lemon_processed_data'], '{subj}_preproc_raw.fif')
 st = osl.utils.Study(fbase)
-inputs = st.match_files
+
+if subj == 'all':
+    inputs = st.match_files
+else
+    inputs = st.get(subj=subj)
+  
 
 for fname in inputs:
     try:
@@ -205,17 +189,21 @@ for fname in inputs:
 
 
 #%% -------------------------------------------------------
+# Prepare first leve files for group analysis
 
-
+# Get first level filenames
 fnames = sorted(glob.glob(cfg['lemon_glm_data'] + '/*glm-data.hdf5'))
 
+# Load subject meta data
 fname = 'META_File_IDs_Age_Gender_Education_Drug_Smoke_SKID_LEMON.csv'
 meta_file = os.path.join(os.path.dirname(cfg['lemon_raw'].rstrip('/')), fname)
 df = pd.read_csv(meta_file)
 
+# Extract subject IDs
 allsubj = np.unique([fname.split('/')[-1].split('_')[0][4:] for fname in fnames])
 allsubj_no = np.arange(len(allsubj))
 
+# Preallocate lists
 subj_id = []
 subj = []
 age = []
@@ -233,6 +221,8 @@ aic = []
 aic_null = []
 sw = []
 sw_null = []
+
+# Main loop - load first levels and store copes + meta data
 for idx, fname in enumerate(fnames):
     print('{0}/{1} - {2}'.format(idx, len(fnames), fname.split('/')[-1]))
     model = obj_from_hdf5file(fname, 'null_model')
@@ -266,6 +256,7 @@ for idx, fname in enumerate(fnames):
         sex.append(df.iloc[demo_ind[0]]['Gender_ 1=female_2=male'])
     num_blinks.append(h5py.File(fname, 'r')['num_blinks'][()])
 
+# Stack first levels into new glm dataset +  save
 first_level = np.concatenate(first_level, axis=0)
 group_data = glm.data.TrialGLMData(data=first_level, subj_id=subj_id,
                                    subj=subj, task=task, age=age, num_blinks=num_blinks,
