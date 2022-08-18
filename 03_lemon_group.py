@@ -13,8 +13,7 @@ from anamnesis import obj_from_hdf5file
 import matplotlib.pyplot as plt
 from scipy import stats
 
-sys.path.append('/Users/andrew/src/qlt')
-import qlt
+import lemon_plotting
 
 from glm_config import cfg
 
@@ -24,224 +23,49 @@ from glm_config import cfg
 fbase = os.path.join(cfg['lemon_processed_data'], 'sub-010002_preproc_raw.fif')
 raw = mne.io.read_raw_fif(fbase).pick_types(eeg=True)
 
+st = osl.utils.Study(os.path.join(cfg['lemon_glm_data'],'{subj}_preproc_raw_glm-data.hdf5'))
+freq_vect = h5py.File(st.match_files[0], 'r')['freq_vect'][()]
+fl_model = obj_from_hdf5file(st.match_files[0], 'model')
+
+
 #%% --------------------------------------------------
 # Load first level results and fit group model
 
-#inputs = os.path.join(cfg['lemon_analysis_dir'], 'lemon_eeg_sensorglm_groupdata.hdf5')
-#inputs = os.path.join('/Users/andrew/Projects/glm/glm_psd/analysis', 'lemon_eeg_sensorglm_groupdata.hdf5')
-#inputs2 = os.path.join('/Users/andrew/Projects/glm/glm_psd/analysis', 'lemon_eeg_sensorglm_groupdata_conf.hdf5')
-#nulls = os.path.join('/Users/andrew/Projects/glm/glm_psd/analysis', 'lemon_eeg_sensorglm_groupdata_null.hdf5')
 inputs = os.path.join(cfg['lemon_glm_data'], 'lemon_eeg_sensorglm_groupdata.hdf5')
 nulls = os.path.join(cfg['lemon_glm_data'], 'lemon_eeg_sensorglm_groupdata_null.hdf5')
 
 data = obj_from_hdf5file(inputs, 'data')
 datanull = obj_from_hdf5file(nulls, 'data')
-with h5py.File(inputs, 'r') as F:
-    #freq_vect = F['freq_vect'][()]  # needs fixing server-side
-    freq_vect = np.linspace(0.5, 100, 200)
+
+data.info['age_group'] = np.array(data.info['age']) < 45
 
 # Drop obvious outliers
 bads = sails.utils.detect_artefacts(data.data[:, 0, :, :], axis=0)
 clean_data = data.drop(np.where(bads)[0])
 
-# Load age and sex data
-#df = pd.read_csv('/Users/andrew/Projects/ntad/RA_Interview/LEMON_RA_InterviewData2.csv')
-#meta_file = os.path.join(cfg['lemon_raw'], 'META_File_IDs_Age_Gender_Education_Drug_Smoke_SKID_LEMON.csv')
-#df = pd.read_csv(meta_file)
-#age = []
-#sex = []
-#for idx, subj in enumerate(data.info['subj_id']):
-#    subj = 'sub-' + subj
-#    ind = np.where(df['ID'] == subj)[0][0]
-#    row = df.iloc[ind]
-#    #age.append(row['Age'] + 2.5)
-#    age.append(float(row['Age'].split('-')[0]) + 2.5)
-#    sex.append(row['Gender_ 1=female_2=male'])
-#
-#data.info['age'] = age
-#data.info['sex'] = sex
-#data.info['subj_id'] = list(data.info['subj_id'])
-#
-#datanull.info['age'] = age
-#datanull.info['sex'] = sex
-#datanull.info['subj_id'] = list(datanull.info['subj_id'])
-
-data.info['age_group'] = list(np.array(data.info['age']) < 45)
-
-fl_contrast_names = ['Mean', 'Open < Closed', 'Eyes Open', 'Eyes Closed', 'Linear Trend', 
-                     'Bad Segments', 'Bad Segments Diff', 'V-EOG', 'H-EOG']
-
-
-#fl_regressor_names = ['Open', 'Closed', 'Linear', 'Bads', 'BadDiffs', 'V-EOG', 'H-EOG']
-#confs = h5py.File(inputs, 'r')['confs'][()]
-#for ii in range(5):
-#    data.info[fl_regressor_names[ii+2]] = confs[:, ii+2]
-#    datanull.info[fl_regressor_names[ii+2]] = confs[:, ii+2]
-#
-#keeps = np.where(np.array(age) < 45)[0]
-#drops = np.setdiff1d(np.arange(len(age)), keeps)
-#
-#data = data.drop(drops)
-#datanull = datanull.drop(drops)
-
-# Refit group model
-#DC = glm.design.DesignConfig()
-#DC.add_regressor(name='Female', rtype='Categorical', datainfo='sex', codes=1)
-#DC.add_regressor(name='Male', rtype='Categorical', datainfo='sex', codes=2)
-##DC.add_regressor(name='Blinks', rtype='Parametric', datainfo='num_blinks', preproc='z')
-##for ii in range(5):
-##    DC.add_regressor(name=fl_regressor_names[ii+2], rtype='Parametric', datainfo=fl_regressor_names[ii+2], preproc='z')
-#DC.add_contrast(name='GroupMean',values={'Female': 0.5, 'Male': 0.5})
-#DC.add_contrast(name='Female>Male',values={'Female': 1, 'Male': -1})
-#DC.add_simple_contrasts()
-
 DC = glm.design.DesignConfig()
 DC.add_regressor(name='Young', rtype='Categorical', datainfo='age_group', codes=1)
 DC.add_regressor(name='Old', rtype='Categorical', datainfo='age_group', codes=0)
 DC.add_regressor(name='Sex', rtype='Parametric', datainfo='sex', preproc='z')
-DC.add_simple_contrasts()
+DC.add_contrast(name='Mean',values={'Young': 0.5, 'Old': 0.5})
 DC.add_contrast(name='Young>Old',values={'Young': 1, 'Old': -1})
+DC.add_simple_contrasts()
 
 design = DC.design_from_datainfo(data.info)
 gmodel = glm.fit.OLSModel(design, data)
 gmodel_null = glm.fit.OLSModel(design, datanull)
 
 
-with h5py.File(os.path.join(cfg['lemon_analysis_dir'], 'lemon-group_glm-data.hdf5'), 'w') as F:
+with h5py.File(os.path.join(cfg['lemon_glm_data'], 'lemon-group_glm-data.hdf5'), 'w') as F:
      gmodel.to_hdf5(F.create_group('model'))
      design.to_hdf5(F.create_group('design'))
-     #data.to_hdf5(F.create_group('data'))
+     data.to_hdf5(F.create_group('data'))
 
-fout = os.path.join(cfg['lemon_analysis_dir'], 'lemon-group_glm-design.png')
+fout = os.path.join(cfg['lemon_figures'], 'lemon-group_glm-design.png')
 design.plot_summary(show=False, savepath=fout)
-fout = os.path.join(cfg['lemon_analysis_dir'], 'lemon-group_glm-efficiency.png')
+fout = os.path.join(cfg['lemon_figures'], 'lemon-group_glm-efficiency.png')
 design.plot_efficiency(show=False, savepath=fout)
 
-#%% ------------------------------------------------------
-
-
-
-
-
-#%% ------------------------------------------------------
-
-#def varcope_corr_medfilt(vc, window_size=11, smooth_dims=None):
-#    if smooth_dims is None:
-#        smooth_dims = np.arange(vc.ndim)
-#    elif isinstance(smooth_dims, (float, int)):
-#        smooth_dims = [smooth_dims]
-#    print('Applying medfilt smoothing of {} to dims {} of {}'.format(window_size, smooth_dims, vc.shape))
-#
-#    sigma = np.ones((vc.ndim,), dtype=int)
-#    sigma[np.array(smooth_dims)] = window_size
-#
-#    #return ndimage.median_filter(vc, size=sigma)
-#    return ndimage.uniform_filter(vc, size=sigma)
-#
-#
-#tstat_args = {'hat_factor': None, 'varcope_smoothing': 'medfilt',
-#              'window_size': 15, 'smooth_dims': 2}
-#ts = gmodel.get_tstats(**tstat_args)
-#
-#vc = varcope_corr_medfilt(gmodel.varcopes, window_size=15, smooth_dims=2)
-#
-#plt.figure()
-#for ii in range(gmodel.num_contrasts):
-#    plt.subplot(2,5,ii+1)
-#    #plt.plot(gmodel.copes[ii, 0 ,:, :])
-#    #plt.plot(gmodel.varcopes[ii, 0 ,:, :].mean(axis=1))
-#    #plt.plot(vc[ii, 0 ,:, :].mean(axis=1))
-#    plt.plot(ts[ii, 0 ,:, :])
-#    plt.title(gmodel.contrast_names[ii])
-
-
-
-
-#%% ------------------------------------------------------
-# Effect of covariates
-
-sw = h5py.File(inputs, 'r')['sw'][keeps]
-sw_null = h5py.File(nulls, 'r')['sw'][keeps]
-r2 = h5py.File(inputs, 'r')['r2'][keeps]
-r2_null = h5py.File(nulls, 'r')['r2'][keeps]
-
-labs = ['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii']
-fontargs = {'fontsize': 'large', 'fontweight': 'bold', 'color':'r', 'ha':'center', 'va': 'center'}
-
-plt.figure(figsize=(16, 9))
-
-ppts = [22, 66, 5, 6, 11]
-plt.axes((0.1, 0.5, 0.4*(9/16), 0.4))
-plt.plot(r2_null, r2, 'ko')
-plt.plot(r2_null[ppts], r2[ppts], 'ro')
-plt.text(r2_null[ppts][0]-0.01, r2[ppts][0]+0.02, labs[0], **fontargs)
-plt.text(r2_null[ppts][1]-0.02, r2[ppts][1]+0.02, labs[1], **fontargs)
-plt.text(r2_null[ppts][2]+0.02, r2[ppts][2]-0.035, labs[2],      **fontargs)
-plt.text(r2_null[ppts][3]+0.035, r2[ppts][3], labs[3],      **fontargs)
-plt.text(r2_null[ppts][4]-0.02, r2[ppts][4]+0.02, labs[4], **fontargs)
-
-plt.plot((0, 1), (0, 1), 'k')
-for tag in ['top', 'right']:
-    plt.gca().spines[tag].set_visible(False)
-plt.xlabel('Null Model')
-plt.ylabel('Full Model')
-plt.xlim(0.2, 0.8)
-plt.ylim(0.2, 0.8)
-qlt.subpanel_label(plt.gca(), 'A')
-plt.title('R-Squared\nhigh values indicate greater variance explained')
-
-plt.axes((0.375, 0.5, 0.05, 0.4))
-plt.boxplot(r2-r2_null)
-for tag in ['top', 'right']:
-    plt.gca().spines[tag].set_visible(False)
-plt.ylim(-0.5, 0.5)
-plt.xticks([1], ['Full Model minus \nNull Model'])
-
-plt.axes((0.6, 0.5, 0.4*(9/16), 0.4))
-plt.text(sw_null[ppts][0]-0.02, sw[ppts][0]+0.02, labs[0], **fontargs)
-plt.text(sw_null[ppts][1]-0.02, sw[ppts][1]+0.02, labs[1], **fontargs)
-plt.text(sw_null[ppts][2], sw[ppts][2]-0.035, labs[2],      **fontargs)
-plt.text(sw_null[ppts][3]+0.035, sw[ppts][3], labs[3],      **fontargs)
-plt.text(sw_null[ppts][4]-0.02, sw[ppts][4]+0.02, labs[4], **fontargs)
-plt.plot(sw_null, sw, 'ko')
-plt.plot(sw_null[ppts], sw[ppts], 'ro')
-
-plt.plot((0, 1), (0, 1), 'k')
-for tag in ['top', 'right']:
-    plt.gca().spines[tag].set_visible(False)
-plt.xlabel('Null Model')
-plt.ylabel('Full Model')
-plt.xlim(0.2, 1)
-plt.ylim(0.2, 1)
-qlt.subpanel_label(plt.gca(), 'B')
-plt.title('Shapiro-Wilks\nvalues closer to one indicate more gaussian residuals')
-
-plt.axes((0.875, 0.5, 0.05, 0.4))
-plt.boxplot(sw-sw_null)
-for tag in ['top', 'right']:
-    plt.gca().spines[tag].set_visible(False)
-plt.ylim(-0.2, 0.2)
-plt.xticks([1], ['Full Model minus \nNull Model'])
-
-fx = qlt.prep_scaled_freq(0.5, freq_vect,)
-labs = ['C i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii']
-for ii in range(len(ppts[:5])):
-    ax = plt.axes((0.15+ii*0.16, 0.05, 0.1, 0.3))
-    ax.plot(fx[0], datanull.data[ppts[ii], 0, : :].mean(axis=1))
-    ax.plot(fx[0], data.data[ppts[ii], 0, : :].mean(axis=1))
-    ax.set_xticks(fx[2][::2])
-    ax.set_xticklabels(fx[1][::2])
-    for tag in ['top', 'right']:
-        plt.gca().spines[tag].set_visible(False)
-    plt.ylim(0, 1.2e-5)
-    qlt.subpanel_label(plt.gca(), labs[ii])
-    if ii == 0:
-        plt.ylabel('FFT Magnitude')
-    plt.xlabel('Frequency (Hz)')
-plt.legend(['Null Model', 'Full Model'], frameon=False)
-
-fout = os.path.join(cfg['lemon_analysis_dir'], 'lemon-group_stats-summary.png')
-plt.savefig(fout, transparent=True, dpi=300)
 
 #%% ------------------------------------------------------
 # Permutation stats - run or load from disk
@@ -271,10 +95,10 @@ to_permute = [(0, 0, 'Overall Mean'),
               (0, 6, 'Group Mean of Bad Segments Diff'),
               (0, 7, 'Group Mean of VEOG'),
               (0, 8, 'Group Mean of HEOG'),
-              (1, 0, 'Group Effect of Sex on Mean'),
-              (1, 1, 'Group Effect of Sex on Open>Closed'),
-              (1, 2, 'Group Effect of Sex on Open'),
-              (1, 3, 'Group Effect of Sex on Closed')]
+              (1, 0, 'Group Effect of Age on Mean'),
+              (1, 1, 'Group Effect of Age on Open>Closed'),
+              (1, 2, 'Group Effect of Age on Open'),
+              (1, 3, 'Group Effect of Age on Closed')]
 
 
 run_perms = False
@@ -293,53 +117,66 @@ for icon in range(len(to_permute)):
             factor = fl_mean_data.data.sum(axis=1)[:, None, :]
             fl_mean_data.data = fl_mean_data.data / factor
 
-        p = glm.permutations.MNEClusterPermutation(design, fl_mean_data, gl_con, 150,
-                                                   nprocesses=3,
+        p = glm.permutations.MNEClusterPermutation(design, fl_mean_data, gl_con, 250,
+                                                   nprocesses=8,
                                                    metric='tstats',
                                                    cluster_forming_threshold=cft,
                                                    tstat_args=tstat_args,
                                                    adjacency=adjacency)
 
-        with open(os.path.join(cfg['lemon_analysis_dir'], 'lemon-group_perms-con{0}.pkl'.format(icon)), "wb") as dill_file:
+        with open(os.path.join(cfg['lemon_glm_data'], 'lemon-group_perms-con{0}.pkl'.format(icon)), "wb") as dill_file:
             dill.dump(p, dill_file)
 
         P.append(p)
     else:
-        dill_file = os.path.join(cfg['lemon_analysis_dir'], 'lemon-group_perms-con{0}.pkl'.format(icon))
+        dill_file = os.path.join(cfg['lemon_glm_data'], 'lemon-group_perms-con{0}.pkl'.format(icon))
         P.append(dill.load(open(dill_file, 'rb')))
 
 # Permuate
 # Blinks on Mean, Mean on linear, task, blinks, bads
+to_permute_null = [(0, 0, 'Overall Mean'),
+                   (0, 1, 'Group Mean of Open>Closed'),
+                   (0, 2, 'Group Mean of Open'),
+                   (0, 3, 'Group Mean of Closed'),
+                   (1, 0, 'Group Effect of Age on Mean'),
+                   (1, 1, 'Group Effect of Age on Open>Closed'),
+                   (1, 2, 'Group Effect of Age on Open'),
+                   (1, 3, 'Group Effect of Age on Closed')]
+
 Pn = []
 
 run_perms = False
-for icon in range(len(to_permute)):
-    if to_permute[icon][1] > 3:
+for icon in range(len(to_permute_null)):
+    if to_permute_null[icon][1] > 3:
         Pn.append(None)
     elif run_perms:
-        gl_con = to_permute[icon][0]
-        fl_con = to_permute[icon][1]
+        gl_con = to_permute_null[icon][0]
+        fl_con = to_permute_null[icon][1]
         # Only working with mean regressor for the moment
         fl_mean_data = deepcopy(datanull)
         fl_mean_data.data = datanull.data[:, fl_con, : ,:]
 
-        p = glm.permutations.MNEClusterPermutation(design, fl_mean_data, gl_con, 100,
-                                                   nprocesses=4,
+        p = glm.permutations.MNEClusterPermutation(design, fl_mean_data, gl_con, 250,
+                                                   nprocesses=8,
                                                    metric='tstats',
                                                    cluster_forming_threshold=cft,
                                                    tstat_args=tstat_args,
                                                    adjacency=adjacency)
 
-        with open(os.path.join(cfg['lemon_analysis_dir'], 'lemon-group_permsnull-con{0}.pkl'.format(icon)), "wb") as dill_file:
+        with open(os.path.join(cfg['lemon_glm_data'], 'lemon-group_permsnull-con{0}.pkl'.format(icon)), "wb") as dill_file:
             dill.dump(p, dill_file)
 
         Pn.append(p)
     else:
-        dill_file = os.path.join(cfg['lemon_analysis_dir'], 'lemon-group_permsnull-con{0}.pkl'.format(icon))
+        dill_file = os.path.join(cfg['lemon_glm_data'], 'lemon-group_permsnull-con{0}.pkl'.format(icon))
         Pn.append(dill.load(open(dill_file, 'rb')))
+
+
 
 #%% ----------------------------
 
+
+## SHOULD REPLACE WITH GLM.VIZ version
 def plot_design(ax, design_matrix, regressor_names):
     num_observations, num_regressors = design_matrix.shape
     vm = np.max((design_matrix.min(), design_matrix.max()))
@@ -385,12 +222,17 @@ def plot_design(ax, design_matrix, regressor_names):
                     'w', linewidth=4)
     return cax
 
+#%% -----------------------------------------------------
+
+sensor = 'Pz'
+ch_ind = mne.pick_channels(raw.ch_names, [sensor])[0]
+
 I = np.argsort(data.data[:, 0, :, 23].sum(axis=1))
 I = np.arange(48)
 
 plt.figure(figsize=(16, 9))
 aspect = 16/9
-xf = qlt.prep_scaled_freq(0.5, freq_vect)
+xf = lemon_plotting.prep_scaled_freq(0.5, freq_vect)
 
 #subj_ax = plt.axes([0.05, 0.125, 0.35, 0.35*aspect])
 subj_ax = plt.axes([0.05, 0.125, 0.35, 0.75])
@@ -404,7 +246,7 @@ ystep = 2e-6
 ntotal = 36
 subj_ax.plot((0, xstep*ntotal), (0, ystep*ntotal), color=[0.8, 0.8, 0.8], lw=0.5)
 for ii in range(28):
-    d = data.data[I[ii],0, :, 23]
+    d = data.data[I[ii],0, :, ch_ind]
     ii = ii + 8 if ii > 14 else ii
     subj_ax.plot(np.arange(len(freq_vect))+xstep*ii, d + ystep*ii)
 for tag in ['top','right']:
@@ -419,53 +261,55 @@ l = subj_ax.set_xlabel(r'Frequency (Hz) $\rightarrow$', loc='left')
 l = subj_ax.set_ylabel(r'Amplitude $\rightarrow$', loc='bottom')
 subj_ax.text(48+35*18, ystep*19, '...', fontsize='xx-large', rotation=52)
 subj_ax.text(48+35*18, ystep*16, r'Participants $\rightarrow$', rotation=52)
-qlt.subpanel_label(subj_ax, chr(65), yf=0.75, xf=0.05)
+lemon_plotting.subpanel_label(subj_ax, chr(65), yf=0.75, xf=0.05)
 subj_ax.text(0.125, 0.725, 'First Level GLM Spectra', transform=subj_ax.transAxes, fontsize='large')
 
 pcm = plot_design(des_ax, design.design_matrix[:, :], design.regressor_names)
-des_ax.set_xticklabels(['Female', 'Male', ''])
+des_ax.set_xticklabels(['Young', 'Old', 'Sex', ''])
 des_ax.set_ylabel('Participants')
 des_ax.set_title('Group Design Matrix')
-qlt.subpanel_label(des_ax, chr(65+1), yf=1.05)
+lemon_plotting.subpanel_label(des_ax, chr(65+1), yf=1.05)
 plt.colorbar(pcm, cax=cb_dm)
 
-mean_ax.errorbar(xf[0], gmodel.copes[0, 0, :, 23], yerr=np.sqrt(gmodel.varcopes[0, 0, :, 23]), errorevery=1)
+mean_ax.errorbar(xf[0], gmodel.copes[0, 0, :, ch_ind], yerr=np.sqrt(gmodel.varcopes[0, 0, :, ch_ind]), errorevery=1)
 mean_ax.set_xticks(xf[2], xf[1])
 mean_ax.set_title('Group Mean Spectrum')
-qlt.decorate_spectrum(mean_ax, ylabel='Amplitude')
-qlt.subpanel_label(mean_ax, chr(65+2), yf=1.1)
+lemon_plotting.decorate_spectrum(mean_ax, ylabel='Amplitude')
+lemon_plotting.subpanel_label(mean_ax, chr(65+2), yf=1.1)
 mean_ax.set_xlim(0)
 mean_ax.set_ylim(0)
 
-cov_ax.errorbar(xf[0], gmodel.copes[1, 0, :, 23], yerr=np.sqrt(gmodel.varcopes[1, 0, :, 23]), errorevery=2)
-cov_ax.set_title('Sex effect on Mean Spectrum')
+cov_ax.errorbar(xf[0], gmodel.copes[2, 0, :, ch_ind], yerr=np.sqrt(gmodel.varcopes[2, 0, :, ch_ind]), errorevery=2)
+cov_ax.errorbar(xf[0], gmodel.copes[3, 0, :, ch_ind], yerr=np.sqrt(gmodel.varcopes[3, 0, :, ch_ind]), errorevery=2)
+cov_ax.set_title('Group effects on Mean Spectrum')
+cov_ax.legend(gmodel.contrast_names[2:])
 cov_ax.set_xticks(xf[2], xf[1])
-qlt.decorate_spectrum(cov_ax, ylabel='Amplitude')
-qlt.subpanel_label(cov_ax, chr(65+3), yf=1.1)
+lemon_plotting.decorate_spectrum(cov_ax, ylabel='Amplitude')
+lemon_plotting.subpanel_label(cov_ax, chr(65+3), yf=1.1)
 
-fout = os.path.join(cfg['lemon_analysis_dir'], 'lemon-group_glm-overview.png')
+fout = os.path.join(cfg['lemon_figures'], 'lemon-group_glm-overview.png')
 plt.savefig(fout, transparent=True, dpi=300)
 
 
 #%% ----------------------------
-fx = qlt.prep_scaled_freq(0.5, freq_vect,)
+fx = lemon_plotting.prep_scaled_freq(0.5, freq_vect,)
 
 Q = P
 
 plt.figure(figsize=(16, 12))
 
 ax = plt.axes((0.075, 0.675, 0.3, 0.25))
-qlt.plot_joint_spectrum(ax, gmodel.copes[0, 2, :, :], raw, freq_vect, base=0.5, freqs=[10, 22],
+lemon_plotting.plot_joint_spectrum(ax, gmodel.copes[0, 2, :, :], raw, freq_vect, base=0.5, freqs=[10, 22],
                         topo_scale=None, title='GroupMean Eyes Open', ylabel='FFT Magnitude')
-qlt.subpanel_label(ax, 'A')
+lemon_plotting.subpanel_label(ax, 'A')
 
 ax = plt.axes((0.45, 0.675, 0.3, 0.25))
-qlt.plot_joint_spectrum(ax, gmodel.copes[0, 3, :, :], raw, freq_vect, base=0.5, freqs=[10, 22],
+lemon_plotting.plot_joint_spectrum(ax, gmodel.copes[0, 3, :, :], raw, freq_vect, base=0.5, freqs=[10, 22],
                         topo_scale=None, title='GroupMean Eyes Closed', ylabel='FFT Magnitude')
-qlt.subpanel_label(ax, 'B')
+lemon_plotting.subpanel_label(ax, 'B')
 
 ax = plt.axes([0.775, 0.7, 0.15, 0.15])
-qlt.plot_channel_layout(ax, raw, size=100)
+lemon_plotting.plot_channel_layout(ax, raw, size=100)
 
 ll = [['Rec Start', 'Rec End'],
       ['Good Seg', 'Bad Seg'],
@@ -481,10 +325,10 @@ for ii in range(5):
     fl_mean_data = deepcopy(data)
     fl_mean_data.data = data.data[:, to_permute[ii+4][1], : ,:]  # Mean
 
-    qlt.plot_sensorspace_clusters(fl_mean_data, P[ii+4], raw, ax, xvect=freq_vect, base=0.5)
+    lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[ii+4], raw, ax, xvect=freq_vect, base=0.5)
     ax.set_ylabel('t-stat')
-    qlt.subpanel_label(ax, chr(65+ii+2))
-    plt.title('Group Mean of {0}'.format(fl_contrast_names[ii+4]))
+    lemon_plotting.subpanel_label(ax, chr(65+ii+2))
+    plt.title('Group Mean of {0}'.format(fl_model.contrast_names[ii+4]))
 
     ax = plt.subplot(4,5,ii+16)
 
@@ -497,69 +341,72 @@ for ii in range(5):
         ax.plot(fx[0], np.mean(beta0 + 0*beta1, axis=1))
     ax.plot(fx[0], np.mean(beta0 + 1*beta1, axis=1))
     ax.set_xticks(fx[2], fx[1])
-    qlt.decorate_spectrum(ax)
+    lemon_plotting.decorate_spectrum(ax)
 
     plt.legend(ll[ii], frameon=False)
 
 
-fout = os.path.join(cfg['lemon_analysis_dir'], 'lemon-group_group-glm-meancov.png')
+fout = os.path.join(cfg['lemon_figures'], 'lemon-group_group-glm-meancov.png')
 plt.savefig(fout, transparent=True, dpi=300)
+
 
 
 #%% ----------------------------
 
 plt.figure(figsize=(16, 9))
 
+# Open mean & Closed Mean
 ax = plt.axes([0.075, 0.5, 0.175, 0.4])
 fl_mean_data = deepcopy(data)
 fl_mean_data.data = data.data[:, 1, : ,:]  # Open>Closed
-qlt.plot_sensorspace_clusters(fl_mean_data, P[1], raw, ax, xvect=freq_vect, base=0.5)
+lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[1], raw, ax, xvect=freq_vect, base=0.5)
 ax.set_ylabel('t-stat')
-qlt.subpanel_label(ax, 'A')
-plt.title('Within Subject Effect\n{0}_{1}'.format(gmodel.contrast_names[0], fl_contrast_names[1]))
+lemon_plotting.subpanel_label(ax, 'A')
+plt.title('Within Subject Effect\n{0}_{1}'.format(gmodel.contrast_names[0], fl_model.contrast_names[1]))
 
-# Open mean & Closed Mean
 ax = plt.axes([0.075, 0.1, 0.175, 0.30])
 plt.plot(fx[0], gmodel.copes[0, 2, : ,:].mean(axis=1))
 plt.plot(fx[0], gmodel.copes[0, 3, : ,:].mean(axis=1))
-qlt.decorate_spectrum(ax, ylabel='FFT Magnitude')
+lemon_plotting.decorate_spectrum(ax, ylabel='FFT Magnitude')
 ax.set_xticks(fx[2], fx[1])
 plt.legend(['Eyes Open', 'Eyes Closed'], frameon=False)
 
+
+# Young and Old Means
 ax = plt.axes([0.3125, 0.5, 0.175, 0.4])
 fl_mean_data = deepcopy(data)
 fl_mean_data.data = data.data[:, 0, : ,:]  # Mean
-qlt.plot_sensorspace_clusters(fl_mean_data, P[9], raw, ax, xvect=freq_vect, base=0.5)
+lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[9], raw, ax, xvect=freq_vect, base=0.5)
 ax.set_ylabel('t-stat')
-qlt.subpanel_label(ax, 'B')
-plt.title('Between Subject Effect\n{0}_{1}'.format(gmodel.contrast_names[1], fl_contrast_names[0]))
+lemon_plotting.subpanel_label(ax, 'B')
+plt.title('Between Subject Effect\n{0}_{1}'.format(gmodel.contrast_names[1], fl_model.contrast_names[0]))
 
-# Female Mean & Male Mean
 ax = plt.axes([0.3125, 0.1, 0.175, 0.3])
 plt.plot(fx[0], gmodel.copes[2, 0, : ,:].mean(axis=1))
 plt.plot(fx[0], gmodel.copes[3, 0, : ,:].mean(axis=1))
-qlt.decorate_spectrum(ax, ylabel='FFT Magnitude')
+lemon_plotting.decorate_spectrum(ax, ylabel='FFT Magnitude')
 ax.set_xticks(fx[2], fx[1])
-plt.legend(['Female', 'Male'], frameon=False)
+plt.legend(['Young', 'Old'], frameon=False)
 
+
+# Interactions
 ax = plt.axes([0.55, 0.5, 0.175, 0.4])
 fl_mean_data = deepcopy(data)
-fl_mean_data.data = data.data[:, 1, : ,:]  # Mean
-qlt.plot_sensorspace_clusters(fl_mean_data, P[10], raw, ax, xvect=freq_vect, base=0.5)
+fl_mean_data.data = data.data[:, 1, : ,:]  # Open>Clonsed
+lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[10], raw, ax, xvect=freq_vect, base=0.5)
 ax.set_ylabel('t-stat')
-qlt.subpanel_label(ax, 'C')
-plt.title('Interaction Effect\n{0}_{1}'.format(gmodel.contrast_names[1], fl_contrast_names[1]))
+lemon_plotting.subpanel_label(ax, 'C')
+plt.title('Interaction Effect\n{0}_{1}'.format(gmodel.contrast_names[1], fl_model.contrast_names[1]))
 
-# Female Mean & Male Mean
 ax = plt.axes([0.55, 0.1, 0.175, 0.3])
 plt.plot(fx[0], gmodel.copes[2, 1, : ,:].mean(axis=1))
 plt.plot(fx[0], gmodel.copes[3, 1, : ,:].mean(axis=1))
-qlt.decorate_spectrum(ax, ylabel='FFT Magnitude')
+lemon_plotting.decorate_spectrum(ax, ylabel='FFT Magnitude')
 ax.set_xticks(fx[2], fx[1])
-plt.legend(['Female : Open > Closed', 'Male : Open > Closed'], frameon=False)
+plt.legend(['Young : Open > Closed', 'Old : Open > Closed'], frameon=False)
 
 ax = plt.axes([0.775, 0.7, 0.2, 0.2])
-qlt.plot_channel_layout(ax, raw, size=100)
+lemon_plotting.plot_channel_layout(ax, raw, size=100)
 
 #ax = plt.subplot(4,4,(12,16))
 ax = plt.axes([0.8, 0.175, 0.175, 0.35])
@@ -567,16 +414,19 @@ plt.plot(fx[0], gmodel.copes[2, 2, : ,:].mean(axis=1))
 plt.plot(fx[0], gmodel.copes[3, 2, : ,:].mean(axis=1))
 plt.plot(fx[0], gmodel.copes[2, 3, : ,:].mean(axis=1))
 plt.plot(fx[0], gmodel.copes[3, 3, : ,:].mean(axis=1))
-plt.legend(['{0}_{1}'.format(gmodel.contrast_names[2], fl_contrast_names[2]),
-            '{0}_{1}'.format(gmodel.contrast_names[3], fl_contrast_names[2]),
-            '{0}_{1}'.format(gmodel.contrast_names[2], fl_contrast_names[3]),
-            '{0}_{1}'.format(gmodel.contrast_names[3], fl_contrast_names[3])], frameon=False)
-qlt.decorate_spectrum(ax, ylabel='FFT Magnitude')
+plt.legend(['{0}_{1}'.format(gmodel.contrast_names[2], fl_model.contrast_names[2]),
+            '{0}_{1}'.format(gmodel.contrast_names[3], fl_model.contrast_names[2]),
+            '{0}_{1}'.format(gmodel.contrast_names[2], fl_model.contrast_names[3]),
+            '{0}_{1}'.format(gmodel.contrast_names[3], fl_model.contrast_names[3])], frameon=False)
+lemon_plotting.decorate_spectrum(ax, ylabel='FFT Magnitude')
 ax.set_xticks(fx[2], fx[1])
-qlt.subpanel_label(ax, 'D')
+lemon_plotting.subpanel_label(ax, 'D')
 
-fout = os.path.join(cfg['lemon_analysis_dir'], 'lemon-group_group-glm-anova.png')
+fout = os.path.join(cfg['lemon_figures'], 'lemon-group_group-glm-anova.png')
 plt.savefig(fout, transparent=True, dpi=300)
+
+eye
+
 
 #%% ----------------------------
 
@@ -631,9 +481,9 @@ plt.plot(freq_vect, data.data[data.info['sex']==2, 2, :, :].mean(axis=(0, 2)), '
 plt.xlim(0, 20)
 plt.ylim(0, 1.2e-5)
 l = plt.legend(['Female Subject Peak', 'Male Subject Peak', 'Female Group Spectrum', 'Male Group Spectrum'], bbox_to_anchor=(1, 1))
-qlt.decorate_spectrum(plt.gca(), ylabel='FFT Magnitude')
+lemon_plotting.decorate_spectrum(plt.gca(), ylabel='FFT Magnitude')
 plt.title('Eyes Open Rest')
-qlt.subpanel_label(plt.gca(), 'A')
+lemon_plotting.subpanel_label(plt.gca(), 'A')
 plt.xticks(np.linspace(0,20,5))
 
 plt.axes([0.1, 0.075, 0.35, 0.2])
@@ -650,7 +500,7 @@ for tag in ['top', 'right']:
     plt.gca().spines[tag].set_visible(False)
 plt.gca().spines['left'].set_bounds(0.7, 1.1)
 plt.xlabel('Frequency (Hz)')
-qlt.subpanel_label(plt.gca(), 'B')
+lemon_plotting.subpanel_label(plt.gca(), 'B')
 
 tt = stats.ttest_ind(xx, yy)
 print('Eyes Open')
@@ -669,9 +519,9 @@ plt.plot(freq_vect, data.data[data.info['sex']==1, 3, :, :].mean(axis=(0, 2)), '
 plt.plot(freq_vect, data.data[data.info['sex']==2, 3, :, :].mean(axis=(0, 2)), 'b', lw=3)
 plt.xlim(0, 20)
 plt.ylim(0, 1.2e-5)
-qlt.decorate_spectrum(plt.gca(), ylabel='FFT Magnitude')
+lemon_plotting.decorate_spectrum(plt.gca(), ylabel='FFT Magnitude')
 plt.title('Eyes Closed Rest')
-qlt.subpanel_label(plt.gca(), 'C')
+lemon_plotting.subpanel_label(plt.gca(), 'C')
 plt.xticks(np.linspace(0,20,5))
 
 plt.axes([0.55, 0.075, 0.35, 0.2])
@@ -688,7 +538,7 @@ for tag in ['top', 'right']:
     plt.gca().spines[tag].set_visible(False)
 plt.gca().spines['left'].set_bounds(0.7, 1.1)
 plt.xlabel('Frequency (Hz)')
-qlt.subpanel_label(plt.gca(), 'D')
+lemon_plotting.subpanel_label(plt.gca(), 'D')
 
 tt = stats.ttest_ind(xx, yy)
 print('Eyes Closed')
@@ -702,67 +552,67 @@ plt.savefig(fout, transparent=True, dpi=300)
 eye
 
 #%% ----------------------------
-fx = qlt.prep_scaled_freq(0.5, freq_vect,)
+fx = lemon_plotting.prep_scaled_freq(0.5, freq_vect,)
 
 Q = P
 
 plt.figure(figsize=(16, 12))
 
 ax = plt.axes((0.15, 0.65, 0.3, 0.3))
-qlt.plot_joint_spectrum(ax, gmodel.copes[0, 2, :, :], raw, freq_vect, base=0.5, freqs=[10, 22],
+lemon_plotting.plot_joint_spectrum(ax, gmodel.copes[0, 2, :, :], raw, freq_vect, base=0.5, freqs=[10, 22],
                         topo_scale=None, title='GroupMean Eyes Open', ylabel='FFT Magnitude')
-qlt.subpanel_label(ax, 'A')
+lemon_plotting.subpanel_label(ax, 'A')
 
 ax = plt.axes((0.55, 0.65, 0.3, 0.3))
-qlt.plot_joint_spectrum(ax, gmodel.copes[0, 3, :, :], raw, freq_vect, base=0.5, freqs=[10, 22],
+lemon_plotting.plot_joint_spectrum(ax, gmodel.copes[0, 3, :, :], raw, freq_vect, base=0.5, freqs=[10, 22],
                         topo_scale=None, title='GroupMean Eyes Closed', ylabel='FFT Magnitude')
-qlt.subpanel_label(ax, 'B')
+lemon_plotting.subpanel_label(ax, 'B')
 
 ax = plt.axes([0.075, 0.3, 0.175, 0.25])
 fl_mean_data = deepcopy(data)
 fl_mean_data.data = data.data[:, 1, : ,:]  # Open>Closed
-qlt.plot_sensorspace_clusters(fl_mean_data, P[1], raw, ax, xvect=freq_vect, base=0.5)
+lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[1], raw, ax, xvect=freq_vect, base=0.5)
 ax.set_ylabel('t-stat')
-qlt.subpanel_label(ax, 'C')
+lemon_plotting.subpanel_label(ax, 'C')
 plt.title('Within Subject Effect\n{0}_{1}'.format(gmodel.contrast_names[0], fl_contrast_names[1]))
 
 # Open mean & Closed Mean
 ax = plt.axes([0.075, 0.1, 0.175, 0.15])
 plt.plot(fx[0], gmodel.copes[0, 2, : ,:].mean(axis=1))
 plt.plot(fx[0], gmodel.copes[0, 3, : ,:].mean(axis=1))
-qlt.decorate_spectrum(ax, ylabel='FFT Magnitude')
+lemon_plotting.decorate_spectrum(ax, ylabel='FFT Magnitude')
 ax.set_xticks(fx[2], fx[1])
 plt.legend(['Eyes Open', 'Eyes Closed'], frameon=False)
 
 ax = plt.axes([0.3125, 0.3, 0.175, 0.25])
 fl_mean_data = deepcopy(data)
 fl_mean_data.data = data.data[:, 0, : ,:]  # Mean
-qlt.plot_sensorspace_clusters(fl_mean_data, P[9], raw, ax, xvect=freq_vect, base=0.5)
+lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[9], raw, ax, xvect=freq_vect, base=0.5)
 ax.set_ylabel('t-stat')
-qlt.subpanel_label(ax, 'D')
+lemon_plotting.subpanel_label(ax, 'D')
 plt.title('Between Subject Effect\n{0}_{1}'.format(gmodel.contrast_names[1], fl_contrast_names[0]))
 
 # Female Mean & Male Mean
 ax = plt.axes([0.3125, 0.1, 0.175, 0.15])
 plt.plot(fx[0], gmodel.copes[2, 0, : ,:].mean(axis=1))
 plt.plot(fx[0], gmodel.copes[3, 0, : ,:].mean(axis=1))
-qlt.decorate_spectrum(ax, ylabel='FFT Magnitude')
+lemon_plotting.decorate_spectrum(ax, ylabel='FFT Magnitude')
 ax.set_xticks(fx[2], fx[1])
 plt.legend(['Female', 'Male'], frameon=False)
 
 ax = plt.axes([0.55, 0.3, 0.175, 0.25])
 fl_mean_data = deepcopy(data)
 fl_mean_data.data = data.data[:, 1, : ,:]  # Mean
-qlt.plot_sensorspace_clusters(fl_mean_data, P[10], raw, ax, xvect=freq_vect, base=0.5)
+lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[10], raw, ax, xvect=freq_vect, base=0.5)
 ax.set_ylabel('t-stat')
-qlt.subpanel_label(ax, 'E')
+lemon_plotting.subpanel_label(ax, 'E')
 plt.title('Interaction Effect\n{0}_{1}'.format(gmodel.contrast_names[1], fl_contrast_names[1]))
 
 # Female Mean & Male Mean
 ax = plt.axes([0.55, 0.1, 0.175, 0.15])
 plt.plot(fx[0], gmodel.copes[2, 1, : ,:].mean(axis=1))
 plt.plot(fx[0], gmodel.copes[3, 1, : ,:].mean(axis=1))
-qlt.decorate_spectrum(ax, ylabel='FFT Magnitude')
+lemon_plotting.decorate_spectrum(ax, ylabel='FFT Magnitude')
 ax.set_xticks(fx[2], fx[1])
 plt.legend(['Female : Open > Closed', 'Male : Open > Closed'], frameon=False)
 
@@ -776,9 +626,9 @@ plt.legend(['{0}_{1}'.format(gmodel.contrast_names[2], fl_contrast_names[2]),
             '{0}_{1}'.format(gmodel.contrast_names[3], fl_contrast_names[2]),
             '{0}_{1}'.format(gmodel.contrast_names[2], fl_contrast_names[3]),
             '{0}_{1}'.format(gmodel.contrast_names[3], fl_contrast_names[3])], frameon=False)
-qlt.decorate_spectrum(ax, ylabel='FFT Magnitude')
+lemon_plotting.decorate_spectrum(ax, ylabel='FFT Magnitude')
 ax.set_xticks(fx[2], fx[1])
-qlt.subpanel_label(ax, 'F')
+lemon_plotting.subpanel_label(ax, 'F')
 
 
 fout = os.path.join(cfg['lemon_analysis_dir'], 'lemon-group_group-glm-sex.png')
@@ -803,9 +653,9 @@ for ii in range(5):
     fl_mean_data = deepcopy(data)
     fl_mean_data.data = data.data[:, to_permute[ii+4][1], : ,:]  # Mean
 
-    qlt.plot_sensorspace_clusters(fl_mean_data, P[ii+4], raw, ax, xvect=freq_vect, base=0.5)
+    lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[ii+4], raw, ax, xvect=freq_vect, base=0.5)
     ax.set_ylabel('t-stat')
-    qlt.subpanel_label(ax, chr(65+ii))
+    lemon_plotting.subpanel_label(ax, chr(65+ii))
     plt.title('Group Mean of {0}'.format(fl_contrast_names[ii+4]))
 
     ax = plt.subplot(3,5,ii+11)
@@ -819,7 +669,7 @@ for ii in range(5):
         ax.plot(fx[0], np.mean(beta0 + 0*beta1, axis=1))
     ax.plot(fx[0], np.mean(beta0 + 1*beta1, axis=1))
     ax.set_xticks(fx[2], fx[1])
-    qlt.decorate_spectrum(ax)
+    lemon_plotting.decorate_spectrum(ax)
 
     plt.legend(ll[ii], frameon=False)
 
@@ -827,14 +677,14 @@ fout = os.path.join(cfg['lemon_analysis_dir'], 'lemon-group_group-glm-covs.png')
 plt.savefig(fout, transparent=True, dpi=300)
 
 #%% ----------------------------
-fx = qlt.prep_scaled_freq(0.5, freq_vect,)
+fx = lemon_plotting.prep_scaled_freq(0.5, freq_vect,)
 
 Q = P
 
 plt.figure(figsize=(16, 9))
 
 ax = plt.axes((0.1, 0.55, 0.15, 0.35))
-qlt.plot_joint_spectrum(ax, gmodel.copes[0, 2, :, :], raw, freq_vect, base=0.5, freqs=[10, 22],
+lemon_plotting.plot_joint_spectrum(ax, gmodel.copes[0, 2, :, :], raw, freq_vect, base=0.5, freqs=[10, 22],
                         topo_scale=None, title='Group Average Eyes Open', ylabel='FFT Magnitude')
 
 ax = plt.axes((0.275, 0.55, 0.15, 0.35))
@@ -844,7 +694,7 @@ plt.xlabel('Frequency (Hz)')
 plt.ylabel('Subjects')
 
 ax = plt.axes((0.55, 0.55, 0.15, 0.35))
-qlt.plot_joint_spectrum(ax, gmodel.copes[0, 3, :, :], raw, freq_vect, base=0.5, freqs=[10, 22],
+lemon_plotting.plot_joint_spectrum(ax, gmodel.copes[0, 3, :, :], raw, freq_vect, base=0.5, freqs=[10, 22],
                         topo_scale=None, title='Group Average Eyes Closed', ylabel='FFT Magnitude')
 
 ax = plt.axes((0.725, 0.55, 0.15, 0.35))
@@ -858,7 +708,7 @@ pind = 1
 gl, fl, name = to_permute[pind]
 fl_data = deepcopy(data)
 fl_data.data = fl_data.data[:, fl, :, :]
-qlt.plot_sensorspace_clusters(fl_data, Q[pind], raw, ax, xvect=freq_vect, base=0.5, title=name)
+lemon_plotting.plot_sensorspace_clusters(fl_data, Q[pind], raw, ax, xvect=freq_vect, base=0.5, title=name)
 print(name)
 print('{} : {} - {} : {}'.format(fl, fl_contrast_names[fl],  Q[pind].contrast_idx, gmodel.contrast_names[Q[pind].contrast_idx]))
 
@@ -867,7 +717,7 @@ pind = 10
 gl, fl, name = to_permute[pind]
 fl_data = deepcopy(data)
 fl_data.data = fl_data.data[:, fl, :, :]
-qlt.plot_sensorspace_clusters(fl_data, Q[pind], raw, ax, xvect=freq_vect, base=0.5, title=name)
+lemon_plotting.plot_sensorspace_clusters(fl_data, Q[pind], raw, ax, xvect=freq_vect, base=0.5, title=name)
 print(name)
 print('{} : {} - {} : {}'.format(fl, fl_contrast_names[fl],  Q[pind].contrast_idx, gmodel.contrast_names[Q[pind].contrast_idx]))
 
@@ -876,7 +726,7 @@ pind = 11
 gl, fl, name = to_permute[pind]
 fl_data = deepcopy(data)
 fl_data.data = fl_data.data[:, fl, :, :]
-qlt.plot_sensorspace_clusters(fl_data, Q[pind], raw, ax, xvect=freq_vect, base=0.5, title=name)
+lemon_plotting.plot_sensorspace_clusters(fl_data, Q[pind], raw, ax, xvect=freq_vect, base=0.5, title=name)
 print(name)
 print('{} : {} - {} : {}'.format(fl, fl_contrast_names[fl],  Q[pind].contrast_idx, gmodel.contrast_names[Q[pind].contrast_idx]))
 
@@ -885,7 +735,7 @@ pind = 12
 gl, fl, name = to_permute[pind]
 fl_data = deepcopy(data)
 fl_data.data = fl_data.data[:, fl, :, :]
-qlt.plot_sensorspace_clusters(fl_data, Q[pind], raw, ax, xvect=freq_vect, base=0.5, title=name)
+lemon_plotting.plot_sensorspace_clusters(fl_data, Q[pind], raw, ax, xvect=freq_vect, base=0.5, title=name)
 print(name)
 print('{} : {} - {} : {}'.format(fl, fl_contrast_names[fl],  Q[pind].contrast_idx, gmodel.contrast_names[Q[pind].contrast_idx]))
 
@@ -893,21 +743,21 @@ print('{} : {} - {} : {}'.format(fl, fl_contrast_names[fl],  Q[pind].contrast_id
 
 plt.figure(figsize=(16, 9))
 ax = plt.subplot(2,4,1)
-qlt.plot_sensor_spectrum(ax, gmodel.copes[2, 2, :, :], raw, freq_vect, base=0.5)
+lemon_plotting.plot_sensor_spectrum(ax, gmodel.copes[2, 2, :, :], raw, freq_vect, base=0.5)
 plt.title('{0}_{1}'.format(gmodel.contrast_names[2], fl_contrast_names[2]))
 ax = plt.subplot(2,4,2)
-qlt.plot_sensor_spectrum(ax, gmodel.copes[3, 2, :, :], raw, freq_vect, base=0.5)
+lemon_plotting.plot_sensor_spectrum(ax, gmodel.copes[3, 2, :, :], raw, freq_vect, base=0.5)
 plt.title('{0}_{1}'.format(gmodel.contrast_names[3], fl_contrast_names[2]))
 ax = plt.subplot(2,4,5)
-qlt.plot_sensor_spectrum(ax, gmodel.copes[2, 3, :, :], raw, freq_vect, base=0.5)
+lemon_plotting.plot_sensor_spectrum(ax, gmodel.copes[2, 3, :, :], raw, freq_vect, base=0.5)
 plt.title('{0}_{1}'.format(gmodel.contrast_names[2], fl_contrast_names[3]))
 ax = plt.subplot(2,4,6)
-qlt.plot_sensor_spectrum(ax, gmodel.copes[3, 3, :, :], raw, freq_vect, base=0.5)
+lemon_plotting.plot_sensor_spectrum(ax, gmodel.copes[3, 3, :, :], raw, freq_vect, base=0.5)
 plt.title('{0}_{1}'.format(gmodel.contrast_names[3], fl_contrast_names[3]))
 ax = plt.subplot(2,4,3)
-qlt.plot_sensor_spectrum(ax, gmodel.copes[0, 1, :, :], raw, freq_vect, base=0.5)
+lemon_plotting.plot_sensor_spectrum(ax, gmodel.copes[0, 1, :, :], raw, freq_vect, base=0.5)
 ax = plt.subplot(2,4,7)
-qlt.plot_sensor_spectrum(ax, gmodel.copes[1, 0, :, :], raw, freq_vect, base=0.5)
+lemon_plotting.plot_sensor_spectrum(ax, gmodel.copes[1, 0, :, :], raw, freq_vect, base=0.5)
 ax = plt.subplot(2,4,4)
 plt.plot(xf[0], gmodel.copes[2, 2, : ,:].mean(axis=1))
 plt.plot(xf[0], gmodel.copes[3, 2, : ,:].mean(axis=1))
@@ -919,7 +769,7 @@ plt.legend(['{0}_{1}'.format(gmodel.contrast_names[2], fl_contrast_names[2]),
             '{0}_{1}'.format(gmodel.contrast_names[3], fl_contrast_names[3])])
 plt.xticks(xf[2], xf[1])
 ax = plt.subplot(2,4,8)
-qlt.plot_sensor_spectrum(ax, gmodel.copes[1, 1, :, :], raw, freq_vect, base=0.5)
+lemon_plotting.plot_sensor_spectrum(ax, gmodel.copes[1, 1, :, :], raw, freq_vect, base=0.5)
 plt.title('{0}_{1}'.format(gmodel.contrast_names[1], fl_contrast_names[1]))
 
 
@@ -935,7 +785,7 @@ plt.legend(['{0}_{1}'.format(gmodel.contrast_names[2], fl_contrast_names[2]),
             '{0}_{1}'.format(gmodel.contrast_names[2], fl_contrast_names[3]),
             '{0}_{1}'.format(gmodel.contrast_names[3], fl_contrast_names[3])], frameon=False, loc=3)
 plt.xticks(xf[2], xf[1])
-qlt.decorate_spectrum(ax)
+lemon_plotting.decorate_spectrum(ax)
 axins = ax.inset_axes([0.65, 0.4, 0.45, 0.55])
 axins.plot(xf[0], gmodel.copes[2, 2, : ,:].mean(axis=1))
 axins.plot(xf[0], gmodel.copes[3, 2, : ,:].mean(axis=1))
@@ -944,43 +794,43 @@ axins.plot(xf[0], gmodel.copes[3, 3, : ,:].mean(axis=1))
 axins.set_xticks(xf[2], xf[1])
 axins.set_xlim(2, 4)
 axins.set_ylim(1e-6, 4e-6)
-qlt.decorate_spectrum(axins)
+lemon_plotting.decorate_spectrum(axins)
 #axins.set_yticks(np.arange(4)*0.0001 + 0.0004)
 axins.set_ylabel('')
 axins.set_xlabel('')
 ax.indicate_inset_zoom(axins, edgecolor="black")
-qlt.subpanel_label(ax, 'A')
+lemon_plotting.subpanel_label(ax, 'A')
 ax = plt.subplot(4,4,7)
-#qlt.plot_sensor_spectrum(ax, gmodel.copes[0, 1, :, :], raw, freq_vect, base=0.5)
+#lemon_plotting.plot_sensor_spectrum(ax, gmodel.copes[0, 1, :, :], raw, freq_vect, base=0.5)
 fl_mean_data = deepcopy(datanull)
 fl_mean_data.data = datanull.data[:, 1, : ,:]  # Open>Closed
-qlt.plot_sensorspace_clusters(fl_mean_data, P[1], raw, ax, xvect=freq_vect, base=0.5)
-qlt.subpanel_label(ax, 'B')
+lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[1], raw, ax, xvect=freq_vect, base=0.5)
+lemon_plotting.subpanel_label(ax, 'B')
 plt.title('{0}_{1}'.format(gmodel.contrast_names[0], fl_contrast_names[1]))
 ax = plt.subplot(4,4,15)
-#qlt.plot_sensor_spectrum(ax, gmodel.copes[1, 0, :, :], raw, freq_vect, base=0.5)
+#lemon_plotting.plot_sensor_spectrum(ax, gmodel.copes[1, 0, :, :], raw, freq_vect, base=0.5)
 fl_mean_data = deepcopy(datanull)
 fl_mean_data.data = datanull.data[:, 0, : ,:]  # Mean
-qlt.plot_sensorspace_clusters(fl_mean_data, P[9], raw, ax, xvect=freq_vect, base=0.5)
-qlt.subpanel_label(ax, 'C')
+lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[9], raw, ax, xvect=freq_vect, base=0.5)
+lemon_plotting.subpanel_label(ax, 'C')
 plt.title('{0}_{1}'.format(gmodel.contrast_names[1], fl_contrast_names[0]))
 
 ax = plt.subplot(2,4,8)
 fl_mean_data = deepcopy(datanull)
 fl_mean_data.data = datanull.data[:, 1, : ,:]  # Open>Closed
-qlt.plot_sensorspace_clusters(fl_mean_data, P[10], raw, ax, xvect=freq_vect, base=0.5)
-qlt.subpanel_label(ax, 'D')
+lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[10], raw, ax, xvect=freq_vect, base=0.5)
+lemon_plotting.subpanel_label(ax, 'D')
 plt.title('{0}_{1}'.format(gmodel.contrast_names[1], fl_contrast_names[1]))
 
 
 plt.figure()
 
 ax = plt.subplot(2,4,1)
-#qlt.plot_sensor_spectrum(ax, gmodel.copes[0, 1, :, :], raw, freq_vect, base=0.5)
+#lemon_plotting.plot_sensor_spectrum(ax, gmodel.copes[0, 1, :, :], raw, freq_vect, base=0.5)
 fl_mean_data = deepcopy(datanull)
 fl_mean_data.data = datanull.data[:, 1, : ,:]  # Open>Closed
-qlt.plot_sensorspace_clusters(fl_mean_data, P[1], raw, ax, xvect=freq_vect, base=0.5)
-qlt.subpanel_label(ax, 'B')
+lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[1], raw, ax, xvect=freq_vect, base=0.5)
+lemon_plotting.subpanel_label(ax, 'B')
 plt.title('{0}_{1}'.format(gmodel.contrast_names[0], fl_contrast_names[1]))
 
 # Open mean & Closed Mean
@@ -989,11 +839,11 @@ plt.plot(fx[0], gmodel.copes[0, 2, : ,:].mean(axis=1))
 plt.plot(fx[0], gmodel.copes[0, 3, : ,:].mean(axis=1))
 
 ax = plt.subplot(2,4,2)
-#qlt.plot_sensor_spectrum(ax, gmodel.copes[1, 0, :, :], raw, freq_vect, base=0.5)
+#lemon_plotting.plot_sensor_spectrum(ax, gmodel.copes[1, 0, :, :], raw, freq_vect, base=0.5)
 fl_mean_data = deepcopy(datanull)
 fl_mean_data.data = datanull.data[:, 0, : ,:]  # Mean
-qlt.plot_sensorspace_clusters(fl_mean_data, P[9], raw, ax, xvect=freq_vect, base=0.5)
-qlt.subpanel_label(ax, 'C')
+lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[9], raw, ax, xvect=freq_vect, base=0.5)
+lemon_plotting.subpanel_label(ax, 'C')
 plt.title('{0}_{1}'.format(gmodel.contrast_names[1], fl_contrast_names[0]))
 
 # Female Mean & Male Mean
@@ -1002,11 +852,11 @@ plt.plot(fx[0], gmodel.copes[2, 0, : ,:].mean(axis=1))
 plt.plot(fx[0], gmodel.copes[3, 0, : ,:].mean(axis=1))
 
 ax = plt.subplot(2,4,3)
-#qlt.plot_sensor_spectrum(ax, gmodel.copes[1, 0, :, :], raw, freq_vect, base=0.5)
+#lemon_plotting.plot_sensor_spectrum(ax, gmodel.copes[1, 0, :, :], raw, freq_vect, base=0.5)
 fl_mean_data = deepcopy(datanull)
 fl_mean_data.data = datanull.data[:, 1, : ,:]  # Mean
-qlt.plot_sensorspace_clusters(fl_mean_data, P[10], raw, ax, xvect=freq_vect, base=0.5)
-qlt.subpanel_label(ax, 'C')
+lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[10], raw, ax, xvect=freq_vect, base=0.5)
+lemon_plotting.subpanel_label(ax, 'C')
 plt.title('{0}_{1}'.format(gmodel.contrast_names[1], fl_contrast_names[0]))
 
 # Female Mean & Male Mean
@@ -1031,32 +881,32 @@ ax.set_aspect(1.0/ax.get_data_ratio(), adjustable='box')
 plt.figure(figsize=(16, 9))
 
 ax = plt.axes([0.05, 0.45, 0.2, 0.3])
-qlt.plot_joint_spectrum(ax, gmodel.copes[0, 0, :, :],
+lemon_plotting.plot_joint_spectrum(ax, gmodel.copes[0, 0, :, :],
                         raw, freq_vect, base=0.5,
                         freqs=[1, 9, 20], topo_scale=None)
-qlt.subpanel_label(ax, chr(65), yf=1.1)
+lemon_plotting.subpanel_label(ax, chr(65), yf=1.1)
 
 ax = plt.axes([0.075, 0.05, 0.15, 0.225])
-qlt.plot_channel_layout(ax, raw)
-qlt.subpanel_label(ax, chr(65+1), yf=1.1)
+lemon_plotting.plot_channel_layout(ax, raw)
+lemon_plotting.subpanel_label(ax, chr(65+1), yf=1.1)
 
 for ii in range(4):
     ax = plt.axes([0.325+0.165*ii, 0.6, 0.133, 0.2])
-    #qlt.plot_joint_spectrum(ax, gmodel.get_tstats(sigma_hat='auto')[0, ii+1, :, :],
+    #lemon_plotting.plot_joint_spectrum(ax, gmodel.get_tstats(sigma_hat='auto')[0, ii+1, :, :],
     #                        raw, freq_vect, base=0.5,
     #                        freqs=[1, 9, 20], topo_scale=None)
     # Only working with mean regressor for the moment
     fl_mean_data = deepcopy(data)
     fl_mean_data.data = data.data[:, ii+1, : ,:]
-    qlt.plot_sensorspace_clusters(fl_mean_data, P[ii+1], raw, ax, base=0.5, title=to_permute[ii+1][2], ylabel='t-stat', thresh=99, xvect=freq_vect)
-    qlt.subpanel_label(ax, chr(65+ii+2), yf=1.1)
+    lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[ii+1], raw, ax, base=0.5, title=to_permute[ii+1][2], ylabel='t-stat', thresh=99, xvect=freq_vect)
+    lemon_plotting.subpanel_label(ax, chr(65+ii+2), yf=1.1)
 
 fl_mean_data = deepcopy(data)
 fl_mean_data.data = data.data[:, 0, : ,:]
 for ii in range(2):
     ax = plt.axes([0.425+0.165*ii*1.5, 0.1, 0.133, 0.2])
-    qlt.plot_sensorspace_clusters(fl_mean_data, P[ii+5], raw, ax, base=0.5, title=to_permute[ii+5][2], ylabel='t-stat', xvect=freq_vect)
-    qlt.subpanel_label(ax, chr(65+ii+6), yf=1.1)
+    lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[ii+5], raw, ax, base=0.5, title=to_permute[ii+5][2], ylabel='t-stat', xvect=freq_vect)
+    lemon_plotting.subpanel_label(ax, chr(65+ii+6), yf=1.1)
 
 fout = os.path.join(cfg['lemon_analysis_dir'], 'lemon-group_glm-clusters.png')
 plt.savefig(fout, transparent=True, dpi=300)
@@ -1085,7 +935,7 @@ for ii in range(2):
 
 #%% ----------------------------
 
-fx = qlt.prep_scaled_freq(0.5, freq_vect,)
+fx = lemon_plotting.prep_scaled_freq(0.5, freq_vect,)
 
 plt.figure(figsize=(16, 10))
 plt.subplots_adjust(hspace=0.4, wspace=0.35)
@@ -1097,26 +947,26 @@ for jj in range(8):
     ax = plt.subplot(1,8,jj+1)
 
     if jj == 0:
-        qlt.plot_joint_spectrum(ax, gmodel.copes[0, 0, :, :], raw, freq_vect, base=0.5, freqs=[0.5, 9, 24], topo_scale=None)
+        lemon_plotting.plot_joint_spectrum(ax, gmodel.copes[0, 0, :, :], raw, freq_vect, base=0.5, freqs=[0.5, 9, 24], topo_scale=None)
     else:
         fl_mean_data = deepcopy(data)
         fl_mean_data.data = data.data[:, jj, : ,:]
-        qlt.plot_sensorspace_clusters(fl_mean_data, P[jj], raw, ax,
+        lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[jj], raw, ax,
                                       base=0.5, title=to_permute[jj][2],
                                       ylabel='t-stat', thresh=99, xvect=freq_vect)
     pos = ax.get_position()
     ax.set_position([pos.x0, pos.y0, pos.width, pos.height*0.65])
 
-    qlt.subpanel_label(ax, chr(65+jj), yf=1.1)
+    lemon_plotting.subpanel_label(ax, chr(65+jj), yf=1.1)
 
 
     ax = plt.subplot(3,6,ind+6)
     ax.plot(fx[0], fl_mean_data.data.mean(axis=2).T)
     ax.set_xticks(fx[2], fx[1])
     if jj == 0:
-        qlt.decorate_spectrum(ax, ylabel='amplitude')
+        lemon_plotting.decorate_spectrum(ax, ylabel='amplitude')
     else:
-        qlt.decorate_spectrum(ax, ylabel='')
+        lemon_plotting.decorate_spectrum(ax, ylabel='')
         ax.set_ylim(-0.002, 0.002)
         if jj > 1:
             ax.set_yticklabels([])
@@ -1130,42 +980,42 @@ plt.savefig(fout, transparent=True, dpi=300)
 plt.figure(figsize=(12,8))
 
 ax = plt.subplot(4,3,4)
-qlt.plot_joint_spectrum(ax, gmodel_null.copes[0, 0, :, :], raw, freq_vect,
+lemon_plotting.plot_joint_spectrum(ax, gmodel_null.copes[0, 0, :, :], raw, freq_vect,
                         title='Group Mean - Null Model', base=0.5,
                         freqs=[1, 9, 24], topo_scale=None)
-qlt.subpanel_label(ax, chr(65), yf=1.1)
+lemon_plotting.subpanel_label(ax, chr(65), yf=1.1)
 
 fl_mean_data = deepcopy(datanull)
 fl_mean_data.data = datanull.data[:, 0, : ,:]
 ax = plt.subplot(4,3,5)
-qlt.plot_sensorspace_clusters(fl_mean_data, Pn[1], raw, ax,
+lemon_plotting.plot_sensorspace_clusters(fl_mean_data, Pn[1], raw, ax,
                               base=0.5, title=to_permute_null[1][2],
                               ylabel='t-stat', thresh=95, xvect=freq_vect)
-qlt.subpanel_label(ax, chr(66), yf=1.1)
+lemon_plotting.subpanel_label(ax, chr(66), yf=1.1)
 ax = plt.subplot(4,3,6)
-qlt.plot_sensorspace_clusters(fl_mean_data, Pn[2], raw, ax,
+lemon_plotting.plot_sensorspace_clusters(fl_mean_data, Pn[2], raw, ax,
                               base=0.5, title=to_permute_null[2][2],
                               ylabel='t-stat', thresh=95, xvect=freq_vect)
-qlt.subpanel_label(ax, chr(67), yf=1.1)
+lemon_plotting.subpanel_label(ax, chr(67), yf=1.1)
 
 ax = plt.subplot(4,3,10)
-qlt.plot_joint_spectrum(ax, gmodel.copes[0, 0, :, :], raw, freq_vect,
+lemon_plotting.plot_joint_spectrum(ax, gmodel.copes[0, 0, :, :], raw, freq_vect,
                         title='Group Mean - Full Model', base=0.5,
                         freqs=[1, 9, 24], topo_scale=None)
-qlt.subpanel_label(ax, chr(68), yf=1.1)
+lemon_plotting.subpanel_label(ax, chr(68), yf=1.1)
 
 fl_mean_data = deepcopy(data)
 fl_mean_data.data = data.data[:, 0, : ,:]
 ax = plt.subplot(4,3,11)
-qlt.plot_sensorspace_clusters(fl_mean_data, P[6], raw, ax,
+lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[6], raw, ax,
                               base=0.5, title=to_permute[6][2],
                               ylabel='t-stat', thresh=95, xvect=freq_vect)
-qlt.subpanel_label(ax, chr(69), yf=1.1)
+lemon_plotting.subpanel_label(ax, chr(69), yf=1.1)
 ax = plt.subplot(4,3,12)
-qlt.plot_sensorspace_clusters(fl_mean_data, P[7], raw, ax,
+lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[7], raw, ax,
                               base=0.5, title=to_permute[7][2],
                               ylabel='t-stat', thresh=95, xvect=freq_vect)
-qlt.subpanel_label(ax, chr(70), yf=1.1)
+lemon_plotting.subpanel_label(ax, chr(70), yf=1.1)
 
 fout = os.path.join(cfg['lemon_analysis_dir'], 'lemon-group_glm-higherordereffects.png')
 plt.savefig(fout, transparent=True, dpi=300)
