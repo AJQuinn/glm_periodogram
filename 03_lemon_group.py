@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 from scipy import stats
 
 import lemon_plotting
+from matplotlib.patches import ConnectionPatch
 
 from glm_config import cfg
 
@@ -279,10 +280,10 @@ lemon_plotting.subpanel_label(mean_ax, chr(65+2), yf=1.1)
 mean_ax.set_xlim(0)
 mean_ax.set_ylim(0)
 
-cov_ax.errorbar(xf[0], gmodel.copes[2, 0, :, ch_ind], yerr=np.sqrt(gmodel.varcopes[2, 0, :, ch_ind]), errorevery=2)
-cov_ax.errorbar(xf[0], gmodel.copes[3, 0, :, ch_ind], yerr=np.sqrt(gmodel.varcopes[3, 0, :, ch_ind]), errorevery=2)
+cov_ax.errorbar(xf[0], gmodel.copes[1, 0, :, ch_ind], yerr=np.sqrt(gmodel.varcopes[2, 0, :, ch_ind]), errorevery=2)
+cov_ax.errorbar(xf[0], gmodel.copes[4, 0, :, ch_ind], yerr=np.sqrt(gmodel.varcopes[3, 0, :, ch_ind]), errorevery=2)
 cov_ax.set_title('Group effects on Mean Spectrum')
-cov_ax.legend(gmodel.contrast_names[2:])
+cov_ax.legend(list(np.array(gmodel.contrast_names)[[1,4]]))
 cov_ax.set_xticks(xf[2], xf[1])
 lemon_plotting.decorate_spectrum(cov_ax, ylabel='Amplitude')
 lemon_plotting.subpanel_label(cov_ax, chr(65+3), yf=1.1)
@@ -425,8 +426,6 @@ lemon_plotting.subpanel_label(ax, 'D')
 fout = os.path.join(cfg['lemon_figures'], 'lemon-group_group-glm-anova.png')
 plt.savefig(fout, transparent=True, dpi=300)
 
-eye
-
 
 #%% ----------------------------
 
@@ -467,40 +466,65 @@ red_dict =  {'patch_artist': True,
              'medianprops': dict(color='k'),
              'whiskerprops': dict(color='r')}
 
-plt.figure(figsize=(9, 9))
+plt.figure(figsize=(16, 9))
+ax_eo = plt.axes([0.1, 0.35, 0.25, 0.55])
+ax_eo_f = plt.axes([0.1, 0.075, 0.25, 0.2])
+ax_eo_a = plt.axes([0.375, 0.35, 0.1, 0.55])
 
-ff = np.zeros((2, 113))
-for ii in range(113):
+ax_ec = plt.axes([0.55, 0.35, 0.25, 0.55])
+ax_ec_f = plt.axes([0.55, 0.075, 0.25, 0.2])
+ax_ec_a = plt.axes([0.825, 0.35, 0.1, 0.55])
+
+ff = np.zeros((2, 202))
+for ii in range(202):
     ff[:, ii] = get_peaks(freq_vect, data.data[ii, 2, :, :].mean(axis=1), frange=(7,15))
 
-plt.axes([0.1, 0.35, 0.35, 0.55])
-plt.plot(ff[0, data.info['sex']==1], ff[1, data.info['sex']==1], 'or', alpha=1/3, mec='white')
-plt.plot(ff[0, data.info['sex']==2], ff[1, data.info['sex']==2], 'ob', alpha=1/3, mec='white')
-plt.plot(freq_vect, data.data[data.info['sex']==1, 2, :, :].mean(axis=(0, 2)), 'r', lw=3)
-plt.plot(freq_vect, data.data[data.info['sex']==2, 2, :, :].mean(axis=(0, 2)), 'b', lw=3)
-plt.xlim(0, 20)
-plt.ylim(0, 1.2e-5)
-l = plt.legend(['Female Subject Peak', 'Male Subject Peak', 'Female Group Spectrum', 'Male Group Spectrum'], bbox_to_anchor=(1, 1))
-lemon_plotting.decorate_spectrum(plt.gca(), ylabel='FFT Magnitude')
-plt.title('Eyes Open Rest')
-lemon_plotting.subpanel_label(plt.gca(), 'A')
-plt.xticks(np.linspace(0,20,5))
+ax_eo.plot(ff[0, data.info['age_group']==True], ff[1, data.info['age_group']==True], 'or', alpha=1/3, mec='white')
+ax_eo.plot(ff[0, data.info['age_group']==False], ff[1, data.info['age_group']==False], 'ob', alpha=1/3, mec='white')
+ax_eo.plot(freq_vect, data.data[data.info['age_group']==True, 2, :, :].mean(axis=(0, 2)), 'r', lw=3)
+ax_eo.plot(freq_vect, data.data[data.info['age_group']==False, 2, :, :].mean(axis=(0, 2)), 'b', lw=3)
+ax_eo.set_xlim(0, 20)
+ax_eo.set_ylim(0, 1.2e-5)
+l = plt.legend(['Young Subject Peak', 'Old Subject Peak', 'Young Group Spectrum', 'Old Group Spectrum'], bbox_to_anchor=(1, 1))
+lemon_plotting.decorate_spectrum(ax_eo, ylabel='FFT Magnitude')
+ax_eo.set_title('Eyes Open Rest')
+lemon_plotting.subpanel_label(ax_eo, 'A')
+ax_eo.set_xticks(np.linspace(0,20,5))
 
-plt.axes([0.1, 0.075, 0.35, 0.2])
-yy = ff[0, data.info['sex']==2]
-yy = yy[numpy.logical_not(np.isnan(yy))]
-plt.boxplot(yy, vert=False, positions=[0.8], **blue_dict)
-xx = ff[0, data.info['sex']==1]
-xx = xx[numpy.logical_not(np.isnan(xx))]
-plt.boxplot(xx, vert=False, positions=[1], **red_dict)
-plt.xlim(6, 14)
-plt.ylim(0.6, 1.2)
-plt.gca().set_yticklabels(('Male', 'Female'))
+yy = ff[0, data.info['age_group']==False]
+yy = yy[np.logical_not(np.isnan(yy))]
+ax_eo_f.boxplot(yy, vert=False, positions=[0.8], **blue_dict)
+xx = ff[0, data.info['age_group']==True]
+xx = xx[np.logical_not(np.isnan(xx))]
+ax_eo_f.boxplot(xx, vert=False, positions=[1], **red_dict)
+ax_eo_f.set_xlim(6, 14)
+ax_eo_f.set_ylim(0.6, 1.2)
+ax_eo_f.set_yticklabels(('Old', 'Young'))
 for tag in ['top', 'right']:
-    plt.gca().spines[tag].set_visible(False)
-plt.gca().spines['left'].set_bounds(0.7, 1.1)
-plt.xlabel('Frequency (Hz)')
-lemon_plotting.subpanel_label(plt.gca(), 'B')
+    ax_eo_f.spines[tag].set_visible(False)
+ax_eo_f.spines['left'].set_bounds(0.7, 1.1)
+ax_eo_f.set_xlabel('Frequency (Hz)')
+lemon_plotting.subpanel_label(ax_eo_f, 'B')
+
+#con1 = ConnectionPatch(xyA=(6, 0), xyB=(6, 1.1), coordsA="data", coordsB="data",
+#                      axesA=ax_eo, axesB=ax_eo_f, color="black")
+#ax_eo.add_artist(con1)
+#con2 = ConnectionPatch(xyA=(14, 0), xyB=(14, 1.1), coordsA="data", coordsB="data",
+#                      axesA=ax_eo, axesB=ax_eo_f, color="black")
+#ax_eo.add_artist(con2)
+
+yy = ff[1, data.info['age_group']==False]
+yy = yy[np.logical_not(np.isnan(yy))]
+ax_eo_a.boxplot(yy, vert=True, positions=[0.8], **blue_dict)
+xx = ff[1, data.info['age_group']==True]
+xx = xx[np.logical_not(np.isnan(xx))]
+ax_eo_a.boxplot(xx, vert=True, positions=[1], **red_dict)
+ax_eo_a.set_ylim(0, 1.2e-5)
+ax_eo_a.set_xlim(0.6, 1.2)
+ax_eo_a.set_xticklabels(('Old', 'Young'))
+for tag in ['top', 'right']:
+    ax_eo_a.spines[tag].set_visible(False)
+lemon_plotting.subpanel_label(ax_eo_a, 'C')
 
 tt = stats.ttest_ind(xx, yy)
 print('Eyes Open')
@@ -508,37 +532,55 @@ print('Male mean : {}'.format(yy.mean()))
 print('Female mean : {}'.format(xx.mean()))
 print('t({0})={1}, p={2}'.format(len(xx)+len(yy)-2, tt.statistic, tt.pvalue))
 
-ff = np.zeros((2, 113))
-for ii in range(113):
+ff = np.zeros((2, 202))
+for ii in range(202):
     ff[:, ii] = get_peaks(freq_vect, data.data[ii, 3, :, :].mean(axis=1), frange=(7,15))
 
-plt.axes([0.55, 0.35, 0.35, 0.55])
-plt.plot(ff[0, data.info['sex']==1], ff[1, data.info['sex']==1], 'or', alpha=1/3, mec='white')
-plt.plot(ff[0, data.info['sex']==2], ff[1, data.info['sex']==2], 'ob', alpha=1/3, mec='white')
-plt.plot(freq_vect, data.data[data.info['sex']==1, 3, :, :].mean(axis=(0, 2)), 'r', lw=3)
-plt.plot(freq_vect, data.data[data.info['sex']==2, 3, :, :].mean(axis=(0, 2)), 'b', lw=3)
-plt.xlim(0, 20)
-plt.ylim(0, 1.2e-5)
-lemon_plotting.decorate_spectrum(plt.gca(), ylabel='FFT Magnitude')
-plt.title('Eyes Closed Rest')
-lemon_plotting.subpanel_label(plt.gca(), 'C')
-plt.xticks(np.linspace(0,20,5))
+ax_ec.plot(ff[0, data.info['age_group']==True], ff[1, data.info['age_group']==True], 'or', alpha=1/3, mec='white')
+ax_ec.plot(ff[0, data.info['age_group']==False], ff[1, data.info['age_group']==False], 'ob', alpha=1/3, mec='white')
+ax_ec.plot(freq_vect, data.data[data.info['age_group']==True, 3, :, :].mean(axis=(0, 2)), 'r', lw=3)
+ax_ec.plot(freq_vect, data.data[data.info['age_group']==False, 3, :, :].mean(axis=(0, 2)), 'b', lw=3)
+ax_ec.set_xlim(0, 20)
+ax_ec.set_ylim(0, 1.2e-5)
+lemon_plotting.decorate_spectrum(ax_ec, ylabel='FFT Magnitude')
+ax_ec.set_title('Eyes Closed Rest')
+lemon_plotting.subpanel_label(ax_ec, 'D')
+ax_ec.set_xticks(np.linspace(0,20,5))
 
-plt.axes([0.55, 0.075, 0.35, 0.2])
-yy = ff[0, data.info['sex']==2]
-yy = yy[numpy.logical_not(np.isnan(yy))]
-plt.boxplot(yy, vert=False, positions=[0.8], **blue_dict)
-xx = ff[0, data.info['sex']==1]
-xx = xx[numpy.logical_not(np.isnan(xx))]
-plt.boxplot(xx, vert=False, positions=[1], **red_dict)
-plt.xlim(6, 14)
-plt.ylim(0.6, 1.2)
-plt.gca().set_yticklabels(('Male', 'Female'))
+yy = ff[0, data.info['age_group']==False]
+yy = yy[np.logical_not(np.isnan(yy))]
+ax_ec_f.boxplot(yy, vert=False, positions=[0.8], **blue_dict)
+xx = ff[0, data.info['age_group']==True]
+xx = xx[np.logical_not(np.isnan(xx))]
+ax_ec_f.boxplot(xx, vert=False, positions=[1], **red_dict)
+ax_ec_f.set_xlim(6, 14)
+ax_ec_f.set_ylim(0.6, 1.2)
+ax_ec_f.set_yticklabels(('Old', 'Young'))
 for tag in ['top', 'right']:
-    plt.gca().spines[tag].set_visible(False)
-plt.gca().spines['left'].set_bounds(0.7, 1.1)
-plt.xlabel('Frequency (Hz)')
-lemon_plotting.subpanel_label(plt.gca(), 'D')
+    ax_ec_f.spines[tag].set_visible(False)
+ax_ec_f.spines['left'].set_bounds(0.7, 1.1)
+ax_ec_f.set_xlabel('Frequency (Hz)')
+lemon_plotting.subpanel_label(ax_ec_f, 'E')
+
+#con3 = ConnectionPatch(xyA=(6, 0), xyB=(6, 1.1), coordsA="data", coordsB="data",
+#                      axesA=ax_ec, axesB=ax_ec_f, color="black")
+#ax_ec.add_artist(con3)
+#con4 = ConnectionPatch(xyA=(14, 0), xyB=(14, 1.1), coordsA="data", coordsB="data",
+#                      axesA=ax_ec, axesB=ax_ec_f, color="black")
+#ax_ec.add_artist(con4)
+
+yy = ff[1, data.info['age_group']==False]
+yy = yy[np.logical_not(np.isnan(yy))]
+ax_ec_a.boxplot(yy, vert=True, positions=[0.8], **blue_dict)
+xx = ff[1, data.info['age_group']==True]
+xx = xx[np.logical_not(np.isnan(xx))]
+ax_ec_a.boxplot(xx, vert=True, positions=[1], **red_dict)
+ax_ec_a.set_ylim(0, 1.2e-5)
+ax_ec_a.set_xlim(0.6, 1.2)
+ax_ec_a.set_xticklabels(('Old', 'Young'))
+for tag in ['top', 'right']:
+    ax_ec_a.spines[tag].set_visible(False)
+lemon_plotting.subpanel_label(ax_ec_a, 'F')
 
 tt = stats.ttest_ind(xx, yy)
 print('Eyes Closed')
@@ -546,594 +588,5 @@ print('Male mean : {}'.format(yy.mean()))
 print('Female mean : {}'.format(xx.mean()))
 print('t({0})={1}, p={2}'.format(len(xx)+len(yy)-2, tt.statistic, tt.pvalue))
 
-fout = os.path.join(cfg['lemon_analysis_dir'], 'lemon-group_group-sex-peaks.png')
+fout = os.path.join(cfg['lemon_figures'], 'lemon-group_group-age-peaks.png')
 plt.savefig(fout, transparent=True, dpi=300)
-
-eye
-
-#%% ----------------------------
-fx = lemon_plotting.prep_scaled_freq(0.5, freq_vect,)
-
-Q = P
-
-plt.figure(figsize=(16, 12))
-
-ax = plt.axes((0.15, 0.65, 0.3, 0.3))
-lemon_plotting.plot_joint_spectrum(ax, gmodel.copes[0, 2, :, :], raw, freq_vect, base=0.5, freqs=[10, 22],
-                        topo_scale=None, title='GroupMean Eyes Open', ylabel='FFT Magnitude')
-lemon_plotting.subpanel_label(ax, 'A')
-
-ax = plt.axes((0.55, 0.65, 0.3, 0.3))
-lemon_plotting.plot_joint_spectrum(ax, gmodel.copes[0, 3, :, :], raw, freq_vect, base=0.5, freqs=[10, 22],
-                        topo_scale=None, title='GroupMean Eyes Closed', ylabel='FFT Magnitude')
-lemon_plotting.subpanel_label(ax, 'B')
-
-ax = plt.axes([0.075, 0.3, 0.175, 0.25])
-fl_mean_data = deepcopy(data)
-fl_mean_data.data = data.data[:, 1, : ,:]  # Open>Closed
-lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[1], raw, ax, xvect=freq_vect, base=0.5)
-ax.set_ylabel('t-stat')
-lemon_plotting.subpanel_label(ax, 'C')
-plt.title('Within Subject Effect\n{0}_{1}'.format(gmodel.contrast_names[0], fl_contrast_names[1]))
-
-# Open mean & Closed Mean
-ax = plt.axes([0.075, 0.1, 0.175, 0.15])
-plt.plot(fx[0], gmodel.copes[0, 2, : ,:].mean(axis=1))
-plt.plot(fx[0], gmodel.copes[0, 3, : ,:].mean(axis=1))
-lemon_plotting.decorate_spectrum(ax, ylabel='FFT Magnitude')
-ax.set_xticks(fx[2], fx[1])
-plt.legend(['Eyes Open', 'Eyes Closed'], frameon=False)
-
-ax = plt.axes([0.3125, 0.3, 0.175, 0.25])
-fl_mean_data = deepcopy(data)
-fl_mean_data.data = data.data[:, 0, : ,:]  # Mean
-lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[9], raw, ax, xvect=freq_vect, base=0.5)
-ax.set_ylabel('t-stat')
-lemon_plotting.subpanel_label(ax, 'D')
-plt.title('Between Subject Effect\n{0}_{1}'.format(gmodel.contrast_names[1], fl_contrast_names[0]))
-
-# Female Mean & Male Mean
-ax = plt.axes([0.3125, 0.1, 0.175, 0.15])
-plt.plot(fx[0], gmodel.copes[2, 0, : ,:].mean(axis=1))
-plt.plot(fx[0], gmodel.copes[3, 0, : ,:].mean(axis=1))
-lemon_plotting.decorate_spectrum(ax, ylabel='FFT Magnitude')
-ax.set_xticks(fx[2], fx[1])
-plt.legend(['Female', 'Male'], frameon=False)
-
-ax = plt.axes([0.55, 0.3, 0.175, 0.25])
-fl_mean_data = deepcopy(data)
-fl_mean_data.data = data.data[:, 1, : ,:]  # Mean
-lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[10], raw, ax, xvect=freq_vect, base=0.5)
-ax.set_ylabel('t-stat')
-lemon_plotting.subpanel_label(ax, 'E')
-plt.title('Interaction Effect\n{0}_{1}'.format(gmodel.contrast_names[1], fl_contrast_names[1]))
-
-# Female Mean & Male Mean
-ax = plt.axes([0.55, 0.1, 0.175, 0.15])
-plt.plot(fx[0], gmodel.copes[2, 1, : ,:].mean(axis=1))
-plt.plot(fx[0], gmodel.copes[3, 1, : ,:].mean(axis=1))
-lemon_plotting.decorate_spectrum(ax, ylabel='FFT Magnitude')
-ax.set_xticks(fx[2], fx[1])
-plt.legend(['Female : Open > Closed', 'Male : Open > Closed'], frameon=False)
-
-#ax = plt.subplot(4,4,(12,16))
-ax = plt.axes([0.8, 0.175, 0.175, 0.25])
-plt.plot(fx[0], gmodel.copes[2, 2, : ,:].mean(axis=1))
-plt.plot(fx[0], gmodel.copes[3, 2, : ,:].mean(axis=1))
-plt.plot(fx[0], gmodel.copes[2, 3, : ,:].mean(axis=1))
-plt.plot(fx[0], gmodel.copes[3, 3, : ,:].mean(axis=1))
-plt.legend(['{0}_{1}'.format(gmodel.contrast_names[2], fl_contrast_names[2]),
-            '{0}_{1}'.format(gmodel.contrast_names[3], fl_contrast_names[2]),
-            '{0}_{1}'.format(gmodel.contrast_names[2], fl_contrast_names[3]),
-            '{0}_{1}'.format(gmodel.contrast_names[3], fl_contrast_names[3])], frameon=False)
-lemon_plotting.decorate_spectrum(ax, ylabel='FFT Magnitude')
-ax.set_xticks(fx[2], fx[1])
-lemon_plotting.subpanel_label(ax, 'F')
-
-
-fout = os.path.join(cfg['lemon_analysis_dir'], 'lemon-group_group-glm-sex.png')
-plt.savefig(fout, transparent=True, dpi=300)
-
-
-#%% ----------------------------
-
-ll = [['Rec Start', 'Rec End'],
-      ['Good Seg', 'Bad Seg'],
-      ['Good Seg', 'Bad Seg'],
-      ['Low V-EOG Activity', 'High V-EOG Activity'],
-      ['Low H-EOG Activity', 'High H-EOG Activity']]
-
-
-plt.figure(figsize=(16, 9))
-plt.subplots_adjust(left=0.05, right=0.95, wspace=0.45, hspace=0.5)
-
-for ii in range(5):
-    ax = plt.subplot(3,5,ii+6)
-
-    fl_mean_data = deepcopy(data)
-    fl_mean_data.data = data.data[:, to_permute[ii+4][1], : ,:]  # Mean
-
-    lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[ii+4], raw, ax, xvect=freq_vect, base=0.5)
-    ax.set_ylabel('t-stat')
-    lemon_plotting.subpanel_label(ax, chr(65+ii))
-    plt.title('Group Mean of {0}'.format(fl_contrast_names[ii+4]))
-
-    ax = plt.subplot(3,5,ii+11)
-
-    beta0 = gmodel.betas[:, 2:4, :, :].mean(axis=(0,1))
-    beta1 = gmodel.betas[:, ii+4, :, :].mean(axis=0)
-
-    if ii == 0:
-        ax.plot(fx[0], np.mean(beta0 + -1*beta1, axis=1))
-    else:
-        ax.plot(fx[0], np.mean(beta0 + 0*beta1, axis=1))
-    ax.plot(fx[0], np.mean(beta0 + 1*beta1, axis=1))
-    ax.set_xticks(fx[2], fx[1])
-    lemon_plotting.decorate_spectrum(ax)
-
-    plt.legend(ll[ii], frameon=False)
-
-fout = os.path.join(cfg['lemon_analysis_dir'], 'lemon-group_group-glm-covs.png')
-plt.savefig(fout, transparent=True, dpi=300)
-
-#%% ----------------------------
-fx = lemon_plotting.prep_scaled_freq(0.5, freq_vect,)
-
-Q = P
-
-plt.figure(figsize=(16, 9))
-
-ax = plt.axes((0.1, 0.55, 0.15, 0.35))
-lemon_plotting.plot_joint_spectrum(ax, gmodel.copes[0, 2, :, :], raw, freq_vect, base=0.5, freqs=[10, 22],
-                        topo_scale=None, title='Group Average Eyes Open', ylabel='FFT Magnitude')
-
-ax = plt.axes((0.275, 0.55, 0.15, 0.35))
-pcolormesh(fx[0], np.arange(113), np.log(data.data[:, 2, :, :].mean(axis=2)), cmap='cividis', vmax=-10)
-plt.xticks(fx[2], fx[1])
-plt.xlabel('Frequency (Hz)')
-plt.ylabel('Subjects')
-
-ax = plt.axes((0.55, 0.55, 0.15, 0.35))
-lemon_plotting.plot_joint_spectrum(ax, gmodel.copes[0, 3, :, :], raw, freq_vect, base=0.5, freqs=[10, 22],
-                        topo_scale=None, title='Group Average Eyes Closed', ylabel='FFT Magnitude')
-
-ax = plt.axes((0.725, 0.55, 0.15, 0.35))
-pcolormesh(fx[0], np.arange(113), np.log(data.data[:, 3, :, :].mean(axis=2)), cmap='cividis', vmax=-10)
-plt.xticks(fx[2], fx[1])
-plt.xlabel('Frequency (Hz)')
-plt.ylabel('Subjects')
-
-ax = plt.axes((0.05, 0.05, 0.2, 0.35))
-pind = 1
-gl, fl, name = to_permute[pind]
-fl_data = deepcopy(data)
-fl_data.data = fl_data.data[:, fl, :, :]
-lemon_plotting.plot_sensorspace_clusters(fl_data, Q[pind], raw, ax, xvect=freq_vect, base=0.5, title=name)
-print(name)
-print('{} : {} - {} : {}'.format(fl, fl_contrast_names[fl],  Q[pind].contrast_idx, gmodel.contrast_names[Q[pind].contrast_idx]))
-
-ax = plt.axes((0.3, 0.05, 0.2, 0.35))
-pind = 10
-gl, fl, name = to_permute[pind]
-fl_data = deepcopy(data)
-fl_data.data = fl_data.data[:, fl, :, :]
-lemon_plotting.plot_sensorspace_clusters(fl_data, Q[pind], raw, ax, xvect=freq_vect, base=0.5, title=name)
-print(name)
-print('{} : {} - {} : {}'.format(fl, fl_contrast_names[fl],  Q[pind].contrast_idx, gmodel.contrast_names[Q[pind].contrast_idx]))
-
-ax = plt.axes((0.525, 0.05, 0.2, 0.35))
-pind = 11
-gl, fl, name = to_permute[pind]
-fl_data = deepcopy(data)
-fl_data.data = fl_data.data[:, fl, :, :]
-lemon_plotting.plot_sensorspace_clusters(fl_data, Q[pind], raw, ax, xvect=freq_vect, base=0.5, title=name)
-print(name)
-print('{} : {} - {} : {}'.format(fl, fl_contrast_names[fl],  Q[pind].contrast_idx, gmodel.contrast_names[Q[pind].contrast_idx]))
-
-ax = plt.axes((0.775, 0.05, 0.2, 0.35))
-pind = 12
-gl, fl, name = to_permute[pind]
-fl_data = deepcopy(data)
-fl_data.data = fl_data.data[:, fl, :, :]
-lemon_plotting.plot_sensorspace_clusters(fl_data, Q[pind], raw, ax, xvect=freq_vect, base=0.5, title=name)
-print(name)
-print('{} : {} - {} : {}'.format(fl, fl_contrast_names[fl],  Q[pind].contrast_idx, gmodel.contrast_names[Q[pind].contrast_idx]))
-
-#%% ----------------------------
-
-plt.figure(figsize=(16, 9))
-ax = plt.subplot(2,4,1)
-lemon_plotting.plot_sensor_spectrum(ax, gmodel.copes[2, 2, :, :], raw, freq_vect, base=0.5)
-plt.title('{0}_{1}'.format(gmodel.contrast_names[2], fl_contrast_names[2]))
-ax = plt.subplot(2,4,2)
-lemon_plotting.plot_sensor_spectrum(ax, gmodel.copes[3, 2, :, :], raw, freq_vect, base=0.5)
-plt.title('{0}_{1}'.format(gmodel.contrast_names[3], fl_contrast_names[2]))
-ax = plt.subplot(2,4,5)
-lemon_plotting.plot_sensor_spectrum(ax, gmodel.copes[2, 3, :, :], raw, freq_vect, base=0.5)
-plt.title('{0}_{1}'.format(gmodel.contrast_names[2], fl_contrast_names[3]))
-ax = plt.subplot(2,4,6)
-lemon_plotting.plot_sensor_spectrum(ax, gmodel.copes[3, 3, :, :], raw, freq_vect, base=0.5)
-plt.title('{0}_{1}'.format(gmodel.contrast_names[3], fl_contrast_names[3]))
-ax = plt.subplot(2,4,3)
-lemon_plotting.plot_sensor_spectrum(ax, gmodel.copes[0, 1, :, :], raw, freq_vect, base=0.5)
-ax = plt.subplot(2,4,7)
-lemon_plotting.plot_sensor_spectrum(ax, gmodel.copes[1, 0, :, :], raw, freq_vect, base=0.5)
-ax = plt.subplot(2,4,4)
-plt.plot(xf[0], gmodel.copes[2, 2, : ,:].mean(axis=1))
-plt.plot(xf[0], gmodel.copes[3, 2, : ,:].mean(axis=1))
-plt.plot(xf[0], gmodel.copes[2, 3, : ,:].mean(axis=1))
-plt.plot(xf[0], gmodel.copes[3, 3, : ,:].mean(axis=1))
-plt.legend(['{0}_{1}'.format(gmodel.contrast_names[2], fl_contrast_names[2]),
-            '{0}_{1}'.format(gmodel.contrast_names[3], fl_contrast_names[2]),
-            '{0}_{1}'.format(gmodel.contrast_names[2], fl_contrast_names[3]),
-            '{0}_{1}'.format(gmodel.contrast_names[3], fl_contrast_names[3])])
-plt.xticks(xf[2], xf[1])
-ax = plt.subplot(2,4,8)
-lemon_plotting.plot_sensor_spectrum(ax, gmodel.copes[1, 1, :, :], raw, freq_vect, base=0.5)
-plt.title('{0}_{1}'.format(gmodel.contrast_names[1], fl_contrast_names[1]))
-
-
-plt.figure(figsize=(16, 9))
-#ax = plt.subplot(121)
-ax = plt.axes([0.075, 0.1, 0.35, 0.77])
-plt.plot(xf[0], gmodel.copes[2, 2, : ,:].mean(axis=1))
-plt.plot(xf[0], gmodel.copes[3, 2, : ,:].mean(axis=1))
-plt.plot(xf[0], gmodel.copes[2, 3, : ,:].mean(axis=1))
-plt.plot(xf[0], gmodel.copes[3, 3, : ,:].mean(axis=1))
-plt.legend(['{0}_{1}'.format(gmodel.contrast_names[2], fl_contrast_names[2]),
-            '{0}_{1}'.format(gmodel.contrast_names[3], fl_contrast_names[2]),
-            '{0}_{1}'.format(gmodel.contrast_names[2], fl_contrast_names[3]),
-            '{0}_{1}'.format(gmodel.contrast_names[3], fl_contrast_names[3])], frameon=False, loc=3)
-plt.xticks(xf[2], xf[1])
-lemon_plotting.decorate_spectrum(ax)
-axins = ax.inset_axes([0.65, 0.4, 0.45, 0.55])
-axins.plot(xf[0], gmodel.copes[2, 2, : ,:].mean(axis=1))
-axins.plot(xf[0], gmodel.copes[3, 2, : ,:].mean(axis=1))
-axins.plot(xf[0], gmodel.copes[2, 3, : ,:].mean(axis=1))
-axins.plot(xf[0], gmodel.copes[3, 3, : ,:].mean(axis=1))
-axins.set_xticks(xf[2], xf[1])
-axins.set_xlim(2, 4)
-axins.set_ylim(1e-6, 4e-6)
-lemon_plotting.decorate_spectrum(axins)
-#axins.set_yticks(np.arange(4)*0.0001 + 0.0004)
-axins.set_ylabel('')
-axins.set_xlabel('')
-ax.indicate_inset_zoom(axins, edgecolor="black")
-lemon_plotting.subpanel_label(ax, 'A')
-ax = plt.subplot(4,4,7)
-#lemon_plotting.plot_sensor_spectrum(ax, gmodel.copes[0, 1, :, :], raw, freq_vect, base=0.5)
-fl_mean_data = deepcopy(datanull)
-fl_mean_data.data = datanull.data[:, 1, : ,:]  # Open>Closed
-lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[1], raw, ax, xvect=freq_vect, base=0.5)
-lemon_plotting.subpanel_label(ax, 'B')
-plt.title('{0}_{1}'.format(gmodel.contrast_names[0], fl_contrast_names[1]))
-ax = plt.subplot(4,4,15)
-#lemon_plotting.plot_sensor_spectrum(ax, gmodel.copes[1, 0, :, :], raw, freq_vect, base=0.5)
-fl_mean_data = deepcopy(datanull)
-fl_mean_data.data = datanull.data[:, 0, : ,:]  # Mean
-lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[9], raw, ax, xvect=freq_vect, base=0.5)
-lemon_plotting.subpanel_label(ax, 'C')
-plt.title('{0}_{1}'.format(gmodel.contrast_names[1], fl_contrast_names[0]))
-
-ax = plt.subplot(2,4,8)
-fl_mean_data = deepcopy(datanull)
-fl_mean_data.data = datanull.data[:, 1, : ,:]  # Open>Closed
-lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[10], raw, ax, xvect=freq_vect, base=0.5)
-lemon_plotting.subpanel_label(ax, 'D')
-plt.title('{0}_{1}'.format(gmodel.contrast_names[1], fl_contrast_names[1]))
-
-
-plt.figure()
-
-ax = plt.subplot(2,4,1)
-#lemon_plotting.plot_sensor_spectrum(ax, gmodel.copes[0, 1, :, :], raw, freq_vect, base=0.5)
-fl_mean_data = deepcopy(datanull)
-fl_mean_data.data = datanull.data[:, 1, : ,:]  # Open>Closed
-lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[1], raw, ax, xvect=freq_vect, base=0.5)
-lemon_plotting.subpanel_label(ax, 'B')
-plt.title('{0}_{1}'.format(gmodel.contrast_names[0], fl_contrast_names[1]))
-
-# Open mean & Closed Mean
-plt.subplot(2,4,5)
-plt.plot(fx[0], gmodel.copes[0, 2, : ,:].mean(axis=1))
-plt.plot(fx[0], gmodel.copes[0, 3, : ,:].mean(axis=1))
-
-ax = plt.subplot(2,4,2)
-#lemon_plotting.plot_sensor_spectrum(ax, gmodel.copes[1, 0, :, :], raw, freq_vect, base=0.5)
-fl_mean_data = deepcopy(datanull)
-fl_mean_data.data = datanull.data[:, 0, : ,:]  # Mean
-lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[9], raw, ax, xvect=freq_vect, base=0.5)
-lemon_plotting.subpanel_label(ax, 'C')
-plt.title('{0}_{1}'.format(gmodel.contrast_names[1], fl_contrast_names[0]))
-
-# Female Mean & Male Mean
-plt.subplot(2,4,6)
-plt.plot(fx[0], gmodel.copes[2, 0, : ,:].mean(axis=1))
-plt.plot(fx[0], gmodel.copes[3, 0, : ,:].mean(axis=1))
-
-ax = plt.subplot(2,4,3)
-#lemon_plotting.plot_sensor_spectrum(ax, gmodel.copes[1, 0, :, :], raw, freq_vect, base=0.5)
-fl_mean_data = deepcopy(datanull)
-fl_mean_data.data = datanull.data[:, 1, : ,:]  # Mean
-lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[10], raw, ax, xvect=freq_vect, base=0.5)
-lemon_plotting.subpanel_label(ax, 'C')
-plt.title('{0}_{1}'.format(gmodel.contrast_names[1], fl_contrast_names[0]))
-
-# Female Mean & Male Mean
-plt.subplot(2,4,7)
-plt.plot(fx[0], gmodel.copes[2, 1, : ,:].mean(axis=1))
-plt.plot(fx[0], gmodel.copes[3, 1, : ,:].mean(axis=1))
-
-ax = plt.subplot(144)
-plt.plot(xf[0], gmodel.copes[2, 2, : ,:].mean(axis=1))
-plt.plot(xf[0], gmodel.copes[3, 2, : ,:].mean(axis=1))
-plt.plot(xf[0], gmodel.copes[2, 3, : ,:].mean(axis=1))
-plt.plot(xf[0], gmodel.copes[3, 3, : ,:].mean(axis=1))
-plt.legend(['{0}_{1}'.format(gmodel.contrast_names[2], fl_contrast_names[2]),
-            '{0}_{1}'.format(gmodel.contrast_names[3], fl_contrast_names[2]),
-            '{0}_{1}'.format(gmodel.contrast_names[2], fl_contrast_names[3]),
-            '{0}_{1}'.format(gmodel.contrast_names[3], fl_contrast_names[3])], frameon=False)
-ax.set_aspect(1.0/ax.get_data_ratio(), adjustable='box')
-
-
-#%% ----------------------------
-
-plt.figure(figsize=(16, 9))
-
-ax = plt.axes([0.05, 0.45, 0.2, 0.3])
-lemon_plotting.plot_joint_spectrum(ax, gmodel.copes[0, 0, :, :],
-                        raw, freq_vect, base=0.5,
-                        freqs=[1, 9, 20], topo_scale=None)
-lemon_plotting.subpanel_label(ax, chr(65), yf=1.1)
-
-ax = plt.axes([0.075, 0.05, 0.15, 0.225])
-lemon_plotting.plot_channel_layout(ax, raw)
-lemon_plotting.subpanel_label(ax, chr(65+1), yf=1.1)
-
-for ii in range(4):
-    ax = plt.axes([0.325+0.165*ii, 0.6, 0.133, 0.2])
-    #lemon_plotting.plot_joint_spectrum(ax, gmodel.get_tstats(sigma_hat='auto')[0, ii+1, :, :],
-    #                        raw, freq_vect, base=0.5,
-    #                        freqs=[1, 9, 20], topo_scale=None)
-    # Only working with mean regressor for the moment
-    fl_mean_data = deepcopy(data)
-    fl_mean_data.data = data.data[:, ii+1, : ,:]
-    lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[ii+1], raw, ax, base=0.5, title=to_permute[ii+1][2], ylabel='t-stat', thresh=99, xvect=freq_vect)
-    lemon_plotting.subpanel_label(ax, chr(65+ii+2), yf=1.1)
-
-fl_mean_data = deepcopy(data)
-fl_mean_data.data = data.data[:, 0, : ,:]
-for ii in range(2):
-    ax = plt.axes([0.425+0.165*ii*1.5, 0.1, 0.133, 0.2])
-    lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[ii+5], raw, ax, base=0.5, title=to_permute[ii+5][2], ylabel='t-stat', xvect=freq_vect)
-    lemon_plotting.subpanel_label(ax, chr(65+ii+6), yf=1.1)
-
-fout = os.path.join(cfg['lemon_analysis_dir'], 'lemon-group_glm-clusters.png')
-plt.savefig(fout, transparent=True, dpi=300)
-
-#%% ----------------------------
-# Sanity check figure
-
-tstat_args2 = tstat_args.copy()
-tstat_args2['smooth_dims'] = 0
-
-plt.figure()
-for ii in range(2):
-    for jj in range(9):
-        ind = (jj+1)+ii*9
-        print(ind)
-        plt.subplot(2, 8, ind)
-
-        #ts = gmodel.get_tstats(**tstat_args)[ii, jj, : ,:]
-        ts = glm.fit.get_tstats(gmodel.copes[ii, jj, :, :], gmodel.varcopes[ii, jj, :, :],
-                                **tstat_args2)
-
-        plt.plot(freq_vect, ts)
-        plt.title(gl_contrast_names[ii] + ' : ' + fl_contrast_names[jj])
-        if ii == 1:
-            plt.ylim(-10, 10)
-
-#%% ----------------------------
-
-fx = lemon_plotting.prep_scaled_freq(0.5, freq_vect,)
-
-plt.figure(figsize=(16, 10))
-plt.subplots_adjust(hspace=0.4, wspace=0.35)
-plt.subplots_adjust(hspace=0.4, wspace=0.3, top=1, left=0.075, right=0.975)
-ii = 0
-for jj in range(8):
-    ind = (jj+7)+ii*6
-    #ax = plt.subplot(3,6,ind)
-    ax = plt.subplot(1,8,jj+1)
-
-    if jj == 0:
-        lemon_plotting.plot_joint_spectrum(ax, gmodel.copes[0, 0, :, :], raw, freq_vect, base=0.5, freqs=[0.5, 9, 24], topo_scale=None)
-    else:
-        fl_mean_data = deepcopy(data)
-        fl_mean_data.data = data.data[:, jj, : ,:]
-        lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[jj], raw, ax,
-                                      base=0.5, title=to_permute[jj][2],
-                                      ylabel='t-stat', thresh=99, xvect=freq_vect)
-    pos = ax.get_position()
-    ax.set_position([pos.x0, pos.y0, pos.width, pos.height*0.65])
-
-    lemon_plotting.subpanel_label(ax, chr(65+jj), yf=1.1)
-
-
-    ax = plt.subplot(3,6,ind+6)
-    ax.plot(fx[0], fl_mean_data.data.mean(axis=2).T)
-    ax.set_xticks(fx[2], fx[1])
-    if jj == 0:
-        lemon_plotting.decorate_spectrum(ax, ylabel='amplitude')
-    else:
-        lemon_plotting.decorate_spectrum(ax, ylabel='')
-        ax.set_ylim(-0.002, 0.002)
-        if jj > 1:
-            ax.set_yticklabels([])
-
-fout = os.path.join(cfg['lemon_analysis_dir'], 'lemon-group_glm-simpleeffects.png')
-plt.savefig(fout, transparent=True, dpi=300)
-
-
-#%% ----------------------------
-
-plt.figure(figsize=(12,8))
-
-ax = plt.subplot(4,3,4)
-lemon_plotting.plot_joint_spectrum(ax, gmodel_null.copes[0, 0, :, :], raw, freq_vect,
-                        title='Group Mean - Null Model', base=0.5,
-                        freqs=[1, 9, 24], topo_scale=None)
-lemon_plotting.subpanel_label(ax, chr(65), yf=1.1)
-
-fl_mean_data = deepcopy(datanull)
-fl_mean_data.data = datanull.data[:, 0, : ,:]
-ax = plt.subplot(4,3,5)
-lemon_plotting.plot_sensorspace_clusters(fl_mean_data, Pn[1], raw, ax,
-                              base=0.5, title=to_permute_null[1][2],
-                              ylabel='t-stat', thresh=95, xvect=freq_vect)
-lemon_plotting.subpanel_label(ax, chr(66), yf=1.1)
-ax = plt.subplot(4,3,6)
-lemon_plotting.plot_sensorspace_clusters(fl_mean_data, Pn[2], raw, ax,
-                              base=0.5, title=to_permute_null[2][2],
-                              ylabel='t-stat', thresh=95, xvect=freq_vect)
-lemon_plotting.subpanel_label(ax, chr(67), yf=1.1)
-
-ax = plt.subplot(4,3,10)
-lemon_plotting.plot_joint_spectrum(ax, gmodel.copes[0, 0, :, :], raw, freq_vect,
-                        title='Group Mean - Full Model', base=0.5,
-                        freqs=[1, 9, 24], topo_scale=None)
-lemon_plotting.subpanel_label(ax, chr(68), yf=1.1)
-
-fl_mean_data = deepcopy(data)
-fl_mean_data.data = data.data[:, 0, : ,:]
-ax = plt.subplot(4,3,11)
-lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[6], raw, ax,
-                              base=0.5, title=to_permute[6][2],
-                              ylabel='t-stat', thresh=95, xvect=freq_vect)
-lemon_plotting.subpanel_label(ax, chr(69), yf=1.1)
-ax = plt.subplot(4,3,12)
-lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[7], raw, ax,
-                              base=0.5, title=to_permute[7][2],
-                              ylabel='t-stat', thresh=95, xvect=freq_vect)
-lemon_plotting.subpanel_label(ax, chr(70), yf=1.1)
-
-fout = os.path.join(cfg['lemon_analysis_dir'], 'lemon-group_glm-higherordereffects.png')
-plt.savefig(fout, transparent=True, dpi=300)
-
-
-#%% ----------------------------------------
-
-
-ch = 28
-plt.figure()
-plt.subplot(121)
-plt.plot(freq_vect, datanull.data[males, 1, :, ch].mean(axis=(0)), label='MaleOpen<Closed', lw=2)
-plt.plot(freq_vect, datanull.data[females, 1, :, ch].mean(axis=(0)), label='FemaleOpen<Closed', lw=2)
-plt.plot(freq_vect, datanull.data[males, 2, :, ch].mean(axis=(0)), label='MaleOpen', lw=2)
-plt.plot(freq_vect, datanull.data[females, 2, :, ch].mean(axis=(0)), label='FemaleOpen', lw=2)
-plt.plot(freq_vect, datanull.data[males, 3, :, ch].mean(axis=(0)), label='MaleClosed', lw=2)
-plt.plot(freq_vect, datanull.data[females, 3, :, ch].mean(axis=(0)), label='FemaleClosed', lw=2)
-plt.legend()
-plt.subplot(122)
-plt.plot(freq_vect, data.data[males, 1, :, ch].mean(axis=(0)), label='MaleOpen<Closed', lw=2)
-plt.plot(freq_vect, data.data[females, 1, :, ch].mean(axis=(0)), label='FemaleOpen<Closed', lw=2)
-plt.plot(freq_vect, data.data[males, 2, :, ch].mean(axis=(0)), label='MaleOpen', lw=2)
-plt.plot(freq_vect, data.data[females, 2, :, ch].mean(axis=(0)), label='FemaleOpen', lw=2)
-plt.plot(freq_vect, data.data[males, 3, :, ch].mean(axis=(0)), label='MaleClosed', lw=2)
-plt.plot(freq_vect, data.data[females, 3, :, ch].mean(axis=(0)), label='FemaleClosed', lw=2)
-plt.legend()
-
-plt.figure()
-plt.subplot(121)
-plt.plot(freq_vect, datanull.data[males, 1, :, :].mean(axis=(0, 2)), label='MaleOpen<Closed', lw=2)
-plt.plot(freq_vect, datanull.data[females, 1, :, :].mean(axis=(0, 2)), label='FemaleOpen<Closed', lw=2)
-plt.plot(freq_vect, datanull.data[males, 2, :, :].mean(axis=(0, 2)), label='MaleOpen', lw=2)
-plt.plot(freq_vect, datanull.data[females, 2, :, :].mean(axis=(0, 2)), label='FemaleOpen', lw=2)
-plt.plot(freq_vect, datanull.data[males, 3, :, :].mean(axis=(0, 2)), label='MaleClosed', lw=2)
-plt.plot(freq_vect, datanull.data[females, 3, :, :].mean(axis=(0, 2)), label='FemaleClosed', lw=2)
-plt.legend()
-plt.subplot(122)
-plt.plot(freq_vect, data.data[males, 1, :, :].mean(axis=(0, 2)), label='MaleOpen<Closed', lw=2)
-plt.plot(freq_vect, data.data[females, 1, :, :].mean(axis=(0, 2)), label='FemaleOpen<Closed', lw=2)
-plt.plot(freq_vect, data.data[males, 2, :, :].mean(axis=(0, 2)), label='MaleOpen', lw=2)
-plt.plot(freq_vect, data.data[females, 2, :, :].mean(axis=(0, 2)), label='FemaleOpen', lw=2)
-plt.plot(freq_vect, data.data[males, 3, :, :].mean(axis=(0, 2)), label='MaleClosed', lw=2)
-plt.plot(freq_vect, data.data[females, 3, :, :].mean(axis=(0, 2)), label='FemaleClosed', lw=2)
-plt.legend()
-
-
-
-
-
-
-
-def _get_sensible_ticks(vmin, vmax, nbins=3):
-    """Return sensibly rounded tick positions based on a plotting range.
-
-    Based on code in matplotlib.ticker
-    Assuming symmetrical axes and 3 ticks for the moment
-
-    """
-    scale, offset = ticker.scale_range(vmin, vmax)
-    if vmax/scale > 0.5:
-        scale = scale / 2
-    edge = ticker._Edge_integer(scale, offset)
-    low = edge.ge(vmin)
-    high = edge.le(vmax)
-
-    ticks = np.linspace(low, high, nbins) * scale
-
-    return ticks
-
-
-def test_topos(psd):
-
-    plt.figure(figsize=(12,8))
-    vmin = psd.min()
-    vmax = psd.max()
-    if np.all(np.sign((vmin, vmax))==1):
-        cmap = 'Reds'
-        norm = None
-    elif np.all(np.sign((vmin, vmax))==-1):
-        cmap = 'Blues'
-        norm = None
-    elif np.all(np.sign((-vmin, vmax))==1):
-        cmap = 'RdBu_r'
-        norm = mcolors.TwoSlopeNorm(vmin=vmin, vmax=vmax, vcenter=0)
-        if np.abs(vmin) < vmax:
-            vmin = vmin if np.abs(vmin) > vmax/5 else -vmax/5
-        elif np.abs(vmin) > vmax:
-            vmax = vmax if np.abs(vmin)/5 < vmax else np.abs(vmin)/5
-
-    plt.subplot(2,1,1)
-    plot(psd)
-
-    for idx, ii in enumerate(np.arange(5)*10):
-        plt.subplot(2,5,idx+6)
-        im,cn = mne.viz.plot_topomap(psd[ii, :], raw.info, vmin=vmin, vmax=vmax, cmap=cmap)
-        if norm is not None:
-            im.set_norm(norm)
-        if idx == 4:
-            cb = plt.colorbar(im, boundaries=np.linspace(vmin, vmax))
-            tks = _get_sensible_ticks(vmin, vmax, 7)
-            cb.set_ticks(tks)
-
-
-
-
-
-
-
-
-plt.figure()
-plt.plot(freq_vect, data.data[data.info['sex']==1, 2, :, :].mean(axis=2).T, 'k')
-plt.plot(ff[0, data.info['sex']==1], ff[1, data.info['sex']==1], 'or', alpha=1/3)
-
-
-
-plt.figure()
-for ii in range(113):
-    f, p  = get_peaks(freq_vect, data.data[ii, 3, :, :].mean(axis=1), frange=(7,15))
-    plt.plot(freq_vect, data.data[ii, 3, :, :].mean(axis=1), 'k')
-    print(f)
-    plt.plot(f+0.5, p, 'or')
