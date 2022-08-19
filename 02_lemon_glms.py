@@ -5,6 +5,7 @@ import glob
 import h5py
 import sails
 import pandas as pd
+import glmtools as glm
 
 from anamnesis import obj_from_hdf5file
 import matplotlib.pyplot as plt
@@ -87,12 +88,14 @@ def run_first_level(fname, outdir):
     freq_vect0, copes0, varcopes0, extras0 = sails.stft.glm_periodogram(XX, axis=0,
                                                                     fit_constant=False,
                                                                     conditions=conds,
+                                                                    contrasts=conts,
                                                                     nperseg=int(fs*2),
                                                                     fmin=0.1, fmax=100,
                                                                     fs=fs, mode='magnitude',
                                                                     fit_method='glmtools')
     model0, design0, data0 = extras0
     print(model0.contrast_names)
+    print(model0.design_matrix.shape)
 
     # Full model
     freq_vect, copes, varcopes, extras = sails.stft.glm_periodogram(XX, axis=0,
@@ -107,6 +110,8 @@ def run_first_level(fname, outdir):
                                                                     fit_method='glmtools')
     model, design, data = extras
     print(model.contrast_names)
+    print(model.design_matrix.shape)
+
     data.info['dim_labels'] = ['Windows', 'Frequencies', 'Sensors']
 
     print('----')
@@ -161,120 +166,140 @@ def quick_plot_firstlevel(hdfname, rawpath):
     plt.close('all')
 
 
+
+
 #%% ---------------------------------------------------------
 # Select datasets to run
 
-subj = 'all'  # Set to 'sub-010060' to run single subject in paper examples
+# Set to * 'sub-010060' to run single subject in paper examples
+#        * 'all' to run everyone
+#        * None to run nothing and skip to group preparation
+subj = 'all'
 
-#%% -----------------------------------------------------------
-#  Run first level GLMs - probably should dask-ify this...
+n_dask_workers = 4  # Number of dask parallel workers to use if subj is 'all'
 
-proc_outdir = cfg['lemon_processed_data']
 
-fbase = os.path.join(cfg['lemon_processed_data'], '{subj}_preproc_raw.fif')
-st = osl.utils.Study(fbase)
+if __name__ == '__main__':
 
-if subj == 'all':
-    inputs = st.match_files
-else
-    inputs = st.get(subj=subj)
+
+    #%% -----------------------------------------------------------
+    #  Run first level GLMs - probably should dask-ify this...
+
+    proc_outdir = cfg['lemon_processed_data']
+
+    fbase = os.path.join(cfg['lemon_processed_data'], '{subj}_preproc_raw.fif')
+    st = osl.utils.Study(fbase)
+
+    if subj == 'all':
+        inputs = st.match_files
+    else:
+        inputs = st.get(subj=subj)
   
+    #client = Client(n_workers=n_dask_workers, threads_per_worker=1)
+    #osl.utils.parallel.dask_parallel_bag(run_first_level, inputs, func_args=[cfg['lemon_glm_data']])
 
-for fname in inputs:
-    try:
-        run_first_level(fname, cfg['lemon_glm_data'])
-    except Exception as e:
-        print(e)
-        pass
+    for fname in inputs:
+        try:
+            run_first_level(fname, cfg['lemon_glm_data'])
+        except Exception as e:
+            print(e)
+            pass
 
 
-#%% -------------------------------------------------------
-# Prepare first leve files for group analysis
+    #%% -------------------------------------------------------
+    # Prepare first leve files for group analysis
 
-# Get first level filenames
-fnames = sorted(glob.glob(cfg['lemon_glm_data'] + '/*glm-data.hdf5'))
+    print('Loading first levels')
 
-# Load subject meta data
-fname = 'META_File_IDs_Age_Gender_Education_Drug_Smoke_SKID_LEMON.csv'
-meta_file = os.path.join(os.path.dirname(cfg['lemon_raw'].rstrip('/')), fname)
-df = pd.read_csv(meta_file)
+    # Get first level filenames
+    fnames = sorted(glob.glob(cfg['lemon_glm_data'] + '/*glm-data.hdf5'))
 
-# Extract subject IDs
-allsubj = np.unique([fname.split('/')[-1].split('_')[0][4:] for fname in fnames])
-allsubj_no = np.arange(len(allsubj))
+    # Load subject meta data
+    fname = 'META_File_IDs_Age_Gender_Education_Drug_Smoke_SKID_LEMON.csv'
+    meta_file = os.path.join(os.path.dirname(cfg['lemon_raw'].rstrip('/')), fname)
+    df = pd.read_csv(meta_file)
 
-# Preallocate lists
-subj_id = []
-subj = []
-age = []
-sex = []
-hand = []
-task = []
-scandur = []
-num_blinks = []
+    # Extract subject IDs
+    allsubj = np.unique([fname.split('/')[-1].split('_')[0][4:] for fname in fnames])
+    allsubj_no = np.arange(len(allsubj))
 
-first_level = []
-first_level_null = []
-r2 = []
-r2_null = []
-aic = []
-aic_null = []
-sw = []
-sw_null = []
+    # Preallocate lists
+    subj_id = []
+    subj = []
+    age = []
+    sex = []
+    hand = []
+    task = []
+    scandur = []
+    num_blinks = []
 
-# Main loop - load first levels and store copes + meta data
-for idx, fname in enumerate(fnames):
-    print('{0}/{1} - {2}'.format(idx, len(fnames), fname.split('/')[-1]))
-    model = obj_from_hdf5file(fname, 'null_model')
-    design = obj_from_hdf5file(fname, 'design')
-    data = obj_from_hdf5file(fname, 'data')
-    model.design_matrix = design.design_matrix
-    first_level_null.append(model.copes[None, :, :, :])
-    r2_null.append(model.r_square.mean())
-    #sw_null.append(model.get_shapiro(data.data).mean())
-    aic_null.append(model.aic.mean())
+    first_level = []
+    first_level_null = []
+    r2 = []
+    r2_null = []
+    aic = []
+    aic_null = []
+    sw = []
+    sw_null = []
 
-    model = obj_from_hdf5file(fname, 'model')
-    model.design_matrix = design.design_matrix
-    first_level.append(model.copes[None, :, :, :])
-    r2.append(model.r_square.mean())
-    #sw.append(model.get_shapiro(data.data).mean())
-    aic.append(model.aic.mean())
+    # Main loop - load first levels and store copes + meta data
+    for idx, fname in enumerate(fnames):
+        print('{0}/{1} - {2}'.format(idx, len(fnames), fname.split('/')[-1]))
 
-    s_id = fname.split('/')[-1].split('_')[0][4:]
-    subj.append(np.where(allsubj == s_id)[0][0])
-    subj_id.append(s_id)
-    if fname.find('EO') > 0:
-        task.append(1)
-    elif fname.find('EC') > 0:
-        task.append(2)
+        # Load data and design
+        design = obj_from_hdf5file(fname, 'design')
+        data = obj_from_hdf5file(fname, 'data')
 
-    demo_ind = np.where(df['ID'].str.match('sub-' + s_id))[0]
-    if len(demo_ind) > 0:
-        tmp_age = df.iloc[demo_ind[0]]['Age']
-        age.append(np.array(tmp_age.split('-')).astype(float).mean())
-        sex.append(df.iloc[demo_ind[0]]['Gender_ 1=female_2=male'])
-    num_blinks.append(h5py.File(fname, 'r')['num_blinks'][()])
+        # Load null model
+        model = obj_from_hdf5file(fname, 'null_model')
+        model.design_matrix = design.design_matrix[:, :2]
+        first_level_null.append(model.copes[None, :, :, :])
+        r2_null.append(model.r_square.mean())
+        sw_null.append(model.get_shapiro(data.data).mean())
+        aic_null.append(model.aic.mean())
 
-# Stack first levels into new glm dataset +  save
-first_level = np.concatenate(first_level, axis=0)
-group_data = glm.data.TrialGLMData(data=first_level, subj_id=subj_id,
-                                   subj=subj, task=task, age=age, num_blinks=num_blinks,
-                                   sex=sex, scandur=scandur)
+        # Load full model
+        model = obj_from_hdf5file(fname, 'model')
+        model.design_matrix = design.design_matrix
+        first_level.append(model.copes[None, :, :, :])
+        r2.append(model.r_square.mean())
+        sw.append(model.get_shapiro(data.data).mean())
+        aic.append(model.aic.mean())
 
-outf = os.path.join(cfg['lemon_glm_data'], 'lemon_eeg_sensorglm_groupdata.hdf5')
-with h5py.File(outf, 'w') as F:
-    group_data.to_hdf5(F.create_group('data'))
-    F.create_dataset('aic', data=aic)
-    F.create_dataset('r2', data=r2)
+        s_id = fname.split('/')[-1].split('_')[0][4:]
+        subj.append(np.where(allsubj == s_id)[0][0])
+        subj_id.append(s_id)
+        if fname.find('EO') > 0:
+            task.append(1)
+        elif fname.find('EC') > 0:
+            task.append(2)
 
-first_level_null = np.concatenate(first_level_null, axis=0)
-group_data = glm.data.TrialGLMData(data=first_level_null, subj_id=subj_id,
-                                   subj=subj, task=task, age=age, num_blinks=num_blinks,
-                                   sex=sex, scandur=scandur)
+        demo_ind = np.where(df['ID'].str.match('sub-' + s_id))[0]
+        if len(demo_ind) > 0:
+            tmp_age = df.iloc[demo_ind[0]]['Age']
+            age.append(np.array(tmp_age.split('-')).astype(float).mean())
+            sex.append(df.iloc[demo_ind[0]]['Gender_ 1=female_2=male'])
+        num_blinks.append(h5py.File(fname, 'r')['num_blinks'][()])
 
-outf = os.path.join(cfg['lemon_glm_data'], 'lemon_eeg_sensorglm_groupdata_null.hdf5')
-with h5py.File(outf, 'w') as F:
-    group_data.to_hdf5(F.create_group('data'))
-    F.create_dataset('aic', data=aic_null)
-    F.create_dataset('r2', data=r2_null)
+    # Stack first levels into new glm dataset +  save
+    first_level = np.concatenate(first_level, axis=0)
+    group_data = glm.data.TrialGLMData(data=first_level, subj_id=subj_id, shapiro=sw,
+                                       subj=subj, task=task, age=age, num_blinks=num_blinks,
+                                       sex=sex, scandur=scandur, aic=aic, r2=r2)
+
+    outf = os.path.join(cfg['lemon_glm_data'], 'lemon_eeg_sensorglm_groupdata.hdf5')
+    with h5py.File(outf, 'w') as F:
+        group_data.to_hdf5(F.create_group('data'))
+        F.create_dataset('aic', data=aic)
+        F.create_dataset('r2', data=r2)
+
+    first_level_null = np.concatenate(first_level_null, axis=0)
+    group_data = glm.data.TrialGLMData(data=first_level_null, subj_id=subj_id, shapiro=sw_null,
+                                       subj=subj, task=task, age=age, num_blinks=num_blinks,
+                                       sex=sex, scandur=scandur, aic=aic_null, r2=r2_null)
+
+    outf = os.path.join(cfg['lemon_glm_data'], 'lemon_eeg_sensorglm_groupdata_null.hdf5')
+    with h5py.File(outf, 'w') as F:
+        group_data.to_hdf5(F.create_group('data'))
+        F.create_dataset('aic', data=aic_null)
+        F.create_dataset('r2', data=r2_null)
