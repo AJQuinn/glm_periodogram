@@ -477,7 +477,7 @@ ax_ec_a = plt.axes([0.825, 0.35, 0.1, 0.55])
 
 ff = np.zeros((2, 202))
 for ii in range(202):
-    ff[:, ii] = get_peaks(freq_vect, data.data[ii, 2, :, :].mean(axis=1), frange=(7,15))
+    ff[:, ii] = get_peaks(freq_vect, data.data[ii, 2, :, :].mean(axis=1), frange=(6,15))
 
 ax_eo.plot(ff[0, data.info['age_group']==True], ff[1, data.info['age_group']==True], 'or', alpha=1/3, mec='white')
 ax_eo.plot(ff[0, data.info['age_group']==False], ff[1, data.info['age_group']==False], 'ob', alpha=1/3, mec='white')
@@ -534,7 +534,7 @@ print('t({0})={1}, p={2}'.format(len(xx)+len(yy)-2, tt.statistic, tt.pvalue))
 
 ff = np.zeros((2, 202))
 for ii in range(202):
-    ff[:, ii] = get_peaks(freq_vect, data.data[ii, 3, :, :].mean(axis=1), frange=(7,15))
+    ff[:, ii] = get_peaks(freq_vect, data.data[ii, 3, :, :].mean(axis=1), frange=(6,15))
 
 ax_ec.plot(ff[0, data.info['age_group']==True], ff[1, data.info['age_group']==True], 'or', alpha=1/3, mec='white')
 ax_ec.plot(ff[0, data.info['age_group']==False], ff[1, data.info['age_group']==False], 'ob', alpha=1/3, mec='white')

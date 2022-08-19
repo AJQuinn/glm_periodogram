@@ -31,7 +31,7 @@ outdir = cfg['lemon_figures']
 fbase = os.path.join(cfg['lemon_processed_data'], '{subj}_preproc_raw.fif')
 st = osl.utils.Study(fbase)
 
-subj_id = 'sub-010319'
+subj_id = 'sub-010060'
 
 fname = st.get(subj=subj_id)
 dataset = {}
@@ -280,9 +280,9 @@ tstat_args = {'hat_factor': 5e-3, 'varcope_smoothing': 'medfilt', 'window_size':
 P = []
 run_perms = True
 for icon in range(1, design.num_contrasts):
-    fpath = os.path.join(outdir, '{subj_id}_perms-con{icon}.pkl'.format(subj_id=subj_id, icon=icon))
+    fpath = os.path.join(cfg['lemon_glm_data'], '{subj_id}_perms-con{icon}.pkl'.format(subj_id=subj_id, icon=icon))
     if run_perms:
-        p = glm.permutations.MNEClusterPermutation(design, data, icon, 150,
+        p = glm.permutations.MNEClusterPermutation(design, data, icon, 1000,
                                                    nprocesses=8,
                                                    metric='tstats',
                                                    tstat_args=tstat_args,
