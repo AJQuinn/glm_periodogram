@@ -15,6 +15,7 @@ from scipy import stats
 
 import lemon_plotting
 from matplotlib.patches import ConnectionPatch
+import matplotlib as mpl
 
 from glm_config import cfg
 
@@ -28,6 +29,7 @@ st = osl.utils.Study(os.path.join(cfg['lemon_glm_data'],'{subj}_preproc_raw_glm-
 freq_vect = h5py.File(st.match_files[0], 'r')['freq_vect'][()]
 fl_model = obj_from_hdf5file(st.match_files[0], 'model')
 
+df = pd.read_csv(os.path.join(cfg['code_dir'], 'lemon_structural_vols.csv'))
 
 #%% --------------------------------------------------
 # Load first level results and fit group model
@@ -40,21 +42,47 @@ datanull = obj_from_hdf5file(nulls, 'data')
 
 data.info['age_group'] = np.array(data.info['age']) < 45
 
-# Drop obvious outliers
+tbv = []
+gmv = []
+htv = []
+for subj_id in data.info['subj_id']:
+    row = df[df['PPT_ID'] == 'sub-' + subj_id]
+    if len(row) > 0:
+        tbv.append(row[' TotalBrainVol'].values[0])
+        gmv.append(row[' GreyMatterVolNorm'].values[0])
+        htv.append(row[' HippoTotalVolNorm'].values[0])
+    else:
+        tbv.append(np.nan)
+        gmv.append(np.nan)
+        htv.append(np.nan)
+
+data.info['total_brain_vol'] = np.array(tbv)
+data.info['grey_matter_vol'] = np.array(gmv)
+data.info['hippo_vol'] = np.array(htv)
+datanull.info['total_brain_vol'] = np.array(tbv)
+datanull.info['grey_matter_vol'] = np.array(gmv)
+datanull.info['hippo_vol'] = np.array(htv)
+
+# Drop obvious outliers & those with missing MR
 bads = sails.utils.detect_artefacts(data.data[:, 0, :, :], axis=0)
+bads = np.logical_or(bads, np.isnan(htv))
 clean_data = data.drop(np.where(bads)[0])
+clean_null = datanull.drop(np.where(bads)[0])
 
 DC = glm.design.DesignConfig()
 DC.add_regressor(name='Young', rtype='Categorical', datainfo='age_group', codes=1)
 DC.add_regressor(name='Old', rtype='Categorical', datainfo='age_group', codes=0)
 DC.add_regressor(name='Sex', rtype='Parametric', datainfo='sex', preproc='z')
+DC.add_regressor(name='TotalBrainVol', rtype='Parametric', datainfo='total_brain_vol', preproc='z')
+DC.add_regressor(name='GreyMatterVol', rtype='Parametric', datainfo='grey_matter_vol', preproc='z')
+
 DC.add_contrast(name='Mean',values={'Young': 0.5, 'Old': 0.5})
 DC.add_contrast(name='Young>Old',values={'Young': 1, 'Old': -1})
 DC.add_simple_contrasts()
 
-design = DC.design_from_datainfo(data.info)
-gmodel = glm.fit.OLSModel(design, data)
-gmodel_null = glm.fit.OLSModel(design, datanull)
+design = DC.design_from_datainfo(clean_data.info)
+gmodel = glm.fit.OLSModel(design, clean_data)
+gmodel_null = glm.fit.OLSModel(design, clean_null)
 
 
 with h5py.File(os.path.join(cfg['lemon_glm_data'], 'lemon-group_glm-data.hdf5'), 'w') as F:
@@ -78,7 +106,7 @@ adjacency = mne.stats.cluster_level._setup_adjacency(adjacency, ntests, ntimes)
 
 cft = 3
 #cft = -stats.t.ppf(0.01, data.num_observations)
-tstat_args = {'hat_factor': 5e-3, 'varcope_smoothing': 'medfilt',
+tstat_args = {'varcope_smoothing': 'medfilt',
               'window_size': 15, 'smooth_dims': 1}
 #tstat_args = {'hat_factor': 5e-3, 'varcope_smoothing': 'medfilt',
 #              'window_size': 15, 'smooth_dims': 1}
@@ -99,18 +127,21 @@ to_permute = [(0, 0, 'Overall Mean'),
               (1, 0, 'Group Effect of Age on Mean'),
               (1, 1, 'Group Effect of Age on Open>Closed'),
               (1, 2, 'Group Effect of Age on Open'),
-              (1, 3, 'Group Effect of Age on Closed')]
+              (1, 3, 'Group Effect of Age on Closed'),
+              (4, 0, 'Group Effect of Sex on Mean'),
+              (5, 0, 'Group Effect of HeadSize on Mean'),
+              (6, 0, 'Group Effect of GreyMatter on Mean')]
 
 
-run_perms = False
+run_perms = True
 standardise = False
 for icon in range(len(to_permute)):
     if run_perms:
         gl_con = to_permute[icon][0]
         fl_con = to_permute[icon][1]
         # Only working with mean regressor for the moment
-        fl_mean_data = deepcopy(data)
-        fl_mean_data.data = data.data[:, fl_con, : ,:]
+        fl_mean_data = deepcopy(clean_data)
+        fl_mean_data.data = clean_data.data[:, fl_con, : ,:]
 
         if standardise:
             #mn = fl_data.data.mean(axis=1)[:, None, :]
@@ -118,7 +149,7 @@ for icon in range(len(to_permute)):
             factor = fl_mean_data.data.sum(axis=1)[:, None, :]
             fl_mean_data.data = fl_mean_data.data / factor
 
-        p = glm.permutations.MNEClusterPermutation(design, fl_mean_data, gl_con, 250,
+        p = glm.permutations.MNEClusterPermutation(design, fl_mean_data, gl_con, 1000,
                                                    nprocesses=8,
                                                    metric='tstats',
                                                    cluster_forming_threshold=cft,
@@ -142,7 +173,9 @@ to_permute_null = [(0, 0, 'Overall Mean'),
                    (1, 0, 'Group Effect of Age on Mean'),
                    (1, 1, 'Group Effect of Age on Open>Closed'),
                    (1, 2, 'Group Effect of Age on Open'),
-                   (1, 3, 'Group Effect of Age on Closed')]
+                   (1, 3, 'Group Effect of Age on Closed'),
+                   (5, 0, 'Group Effect of HeadSize on Mean'),
+                   (6, 0, 'Group Effect of GreyMatter on Mean')]
 
 Pn = []
 
@@ -154,8 +187,8 @@ for icon in range(len(to_permute_null)):
         gl_con = to_permute_null[icon][0]
         fl_con = to_permute_null[icon][1]
         # Only working with mean regressor for the moment
-        fl_mean_data = deepcopy(datanull)
-        fl_mean_data.data = datanull.data[:, fl_con, : ,:]
+        fl_mean_data = deepcopy(clean_null)
+        fl_mean_data.data = clean_null.data[:, fl_con, : ,:]
 
         p = glm.permutations.MNEClusterPermutation(design, fl_mean_data, gl_con, 250,
                                                    nprocesses=8,
@@ -173,56 +206,6 @@ for icon in range(len(to_permute_null)):
         Pn.append(dill.load(open(dill_file, 'rb')))
 
 
-
-#%% ----------------------------
-
-
-## SHOULD REPLACE WITH GLM.VIZ version
-def plot_design(ax, design_matrix, regressor_names):
-    num_observations, num_regressors = design_matrix.shape
-    vm = np.max((design_matrix.min(), design_matrix.max()))
-    cax = ax.pcolormesh(design_matrix, cmap=plt.cm.coolwarm,
-                    vmin=-vm, vmax=vm)
-    ax.set_xlabel('Regressors')
-    tks = np.arange(len(regressor_names)+1)
-    ax.set_xticks(tks+0.5)
-    ax.set_xticklabels(tks)
-
-    tkstep = 2
-    tks = np.arange(0, design_matrix.shape[0], tkstep)
-
-    for tag in ['top', 'right', 'left', 'bottom']:
-        ax.spines[tag].set_visible(False)
-
-    summary_lines = True
-    new_cols = 0
-    for ii in range(num_regressors):
-        if summary_lines:
-            x = design_matrix[:, ii]
-            if np.abs(np.diff(x)).sum() != 0:
-                #rn = np.max((np.abs(x.max()), np.abs(x.min())))
-                #if (x.max() > 0) and (x.min() < 0):
-                #    rn = rn*2
-                #y = (x-x.min()) / (rn) * .8 + .1
-                #y = (x) / (rn) * .8 + .1
-                y = (0.5*x) / (np.max(np.abs(x)) * 1.1)
-            else:
-                # Constant regressor
-                y = np.ones_like(x) * .45
-            if num_observations > 50:
-                ax.plot(y+ii+new_cols+0.5, np.arange(0, 0+num_observations)+.5, 'k')
-            else:
-                yy = y+ii+new_cols+0.5
-                print('{} - {} - {}'.format(yy.min(), yy.mean(), yy.max()))
-                ax.plot(y+ii+new_cols+0.5, np.arange(0, 0+num_observations)+.5,
-                        'k|', markersize=5)
-
-        # Add white dividing line
-        if ii < num_regressors-1:
-            ax.plot([ii+1+new_cols, ii+1+new_cols], [0, 0+num_observations],
-                    'w', linewidth=4)
-    return cax
-
 #%% -----------------------------------------------------
 
 sensor = 'Pz'
@@ -235,10 +218,8 @@ plt.figure(figsize=(16, 9))
 aspect = 16/9
 xf = lemon_plotting.prep_scaled_freq(0.5, freq_vect)
 
-#subj_ax = plt.axes([0.05, 0.125, 0.35, 0.35*aspect])
 subj_ax = plt.axes([0.05, 0.125, 0.35, 0.75])
-des_ax = plt.axes([0.425, 0.225, 0.175, 0.51])
-cb_dm = plt.axes([0.62, 0.225, 0.01, 0.2])
+des_ax = plt.axes([0.425, 0.1, 0.25, 0.75])
 mean_ax = plt.axes([0.75, 0.6, 0.23, 0.25])
 cov_ax = plt.axes([0.75, 0.1, 0.23, 0.25])
 
@@ -263,14 +244,14 @@ l = subj_ax.set_ylabel(r'Amplitude $\rightarrow$', loc='bottom')
 subj_ax.text(48+35*18, ystep*19, '...', fontsize='xx-large', rotation=52)
 subj_ax.text(48+35*18, ystep*16, r'Participants $\rightarrow$', rotation=52)
 lemon_plotting.subpanel_label(subj_ax, chr(65), yf=0.75, xf=0.05)
-subj_ax.text(0.125, 0.725, 'First Level GLM Spectra', transform=subj_ax.transAxes, fontsize='large')
+subj_ax.text(0.125, 0.725, 'First Level GLM\nCope-Spectra', transform=subj_ax.transAxes, fontsize='large')
 
-pcm = plot_design(des_ax, design.design_matrix[:, :], design.regressor_names)
-des_ax.set_xticklabels(['Young', 'Old', 'Sex', ''])
-des_ax.set_ylabel('Participants')
-des_ax.set_title('Group Design Matrix')
-lemon_plotting.subpanel_label(des_ax, chr(65+1), yf=1.05)
-plt.colorbar(pcm, cax=cb_dm)
+with mpl.rc_context({'font.size': 7}):
+    fig = glm.viz.plot_design_summary(design.design_matrix, design.regressor_names,
+                                      contrasts=design.contrasts,
+                                      contrast_names=design.contrast_names,
+                                      ax=des_ax)
+    fig.axes[4].set_position([0.685, 0.4, 0.01, 0.2])
 
 mean_ax.errorbar(xf[0], gmodel.copes[0, 0, :, ch_ind], yerr=np.sqrt(gmodel.varcopes[0, 0, :, ch_ind]), errorevery=1)
 mean_ax.set_xticks(xf[2], xf[1])
@@ -280,10 +261,12 @@ lemon_plotting.subpanel_label(mean_ax, chr(65+2), yf=1.1)
 mean_ax.set_xlim(0)
 mean_ax.set_ylim(0)
 
-cov_ax.errorbar(xf[0], gmodel.copes[1, 0, :, ch_ind], yerr=np.sqrt(gmodel.varcopes[2, 0, :, ch_ind]), errorevery=2)
-cov_ax.errorbar(xf[0], gmodel.copes[4, 0, :, ch_ind], yerr=np.sqrt(gmodel.varcopes[3, 0, :, ch_ind]), errorevery=2)
+cov_ax.errorbar(xf[0], gmodel.copes[1, 0, :, ch_ind], yerr=np.sqrt(gmodel.varcopes[1, 0, :, ch_ind]), errorevery=2)
+cov_ax.errorbar(xf[0], gmodel.copes[4, 0, :, ch_ind], yerr=np.sqrt(gmodel.varcopes[4, 0, :, ch_ind]), errorevery=2)
+cov_ax.errorbar(xf[0], gmodel.copes[5, 0, :, ch_ind], yerr=np.sqrt(gmodel.varcopes[5, 0, :, ch_ind]), errorevery=2)
+cov_ax.errorbar(xf[0], gmodel.copes[6, 0, :, ch_ind], yerr=np.sqrt(gmodel.varcopes[6, 0, :, ch_ind]), errorevery=2)
 cov_ax.set_title('Group effects on Mean Spectrum')
-cov_ax.legend(list(np.array(gmodel.contrast_names)[[1,4]]))
+cov_ax.legend(list(np.array(gmodel.contrast_names)[[1,4,5,6]]))
 cov_ax.set_xticks(xf[2], xf[1])
 lemon_plotting.decorate_spectrum(cov_ax, ylabel='Amplitude')
 lemon_plotting.subpanel_label(cov_ax, chr(65+3), yf=1.1)
@@ -323,8 +306,8 @@ plt.subplots_adjust(left=0.05, right=0.95, wspace=0.45, hspace=0.5)
 for ii in range(5):
     ax = plt.subplot(4,5,ii+11)
 
-    fl_mean_data = deepcopy(data)
-    fl_mean_data.data = data.data[:, to_permute[ii+4][1], : ,:]  # Mean
+    fl_mean_data = deepcopy(clean_data)
+    fl_mean_data.data = clean_data.data[:, to_permute[ii+4][1], : ,:]  # Mean
 
     lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[ii+4], raw, ax, xvect=freq_vect, base=0.5)
     ax.set_ylabel('t-stat')
@@ -351,15 +334,14 @@ fout = os.path.join(cfg['lemon_figures'], 'lemon-group_group-glm-meancov.png')
 plt.savefig(fout, transparent=True, dpi=300)
 
 
-
 #%% ----------------------------
 
 plt.figure(figsize=(16, 9))
 
 # Open mean & Closed Mean
 ax = plt.axes([0.075, 0.5, 0.175, 0.4])
-fl_mean_data = deepcopy(data)
-fl_mean_data.data = data.data[:, 1, : ,:]  # Open>Closed
+fl_mean_data = deepcopy(clean_data)
+fl_mean_data.data = clean_data.data[:, 1, : ,:]  # Open>Closed
 lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[1], raw, ax, xvect=freq_vect, base=0.5)
 ax.set_ylabel('t-stat')
 lemon_plotting.subpanel_label(ax, 'A')
@@ -375,8 +357,8 @@ plt.legend(['Eyes Open', 'Eyes Closed'], frameon=False)
 
 # Young and Old Means
 ax = plt.axes([0.3125, 0.5, 0.175, 0.4])
-fl_mean_data = deepcopy(data)
-fl_mean_data.data = data.data[:, 0, : ,:]  # Mean
+fl_mean_data = deepcopy(clean_data)
+fl_mean_data.data = clean_data.data[:, 0, : ,:]  # Mean
 lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[9], raw, ax, xvect=freq_vect, base=0.5)
 ax.set_ylabel('t-stat')
 lemon_plotting.subpanel_label(ax, 'B')
@@ -392,8 +374,8 @@ plt.legend(['Young', 'Old'], frameon=False)
 
 # Interactions
 ax = plt.axes([0.55, 0.5, 0.175, 0.4])
-fl_mean_data = deepcopy(data)
-fl_mean_data.data = data.data[:, 1, : ,:]  # Open>Clonsed
+fl_mean_data = deepcopy(clean_data)
+fl_mean_data.data = clean_data.data[:, 1, : ,:]  # Open>Clonsed
 lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[10], raw, ax, xvect=freq_vect, base=0.5)
 ax.set_ylabel('t-stat')
 lemon_plotting.subpanel_label(ax, 'C')
@@ -424,6 +406,95 @@ ax.set_xticks(fx[2], fx[1])
 lemon_plotting.subpanel_label(ax, 'D')
 
 fout = os.path.join(cfg['lemon_figures'], 'lemon-group_group-glm-anova.png')
+plt.savefig(fout, transparent=True, dpi=300)
+
+
+#%% ----------------------------
+# GRROUP COVARIATES
+
+def project_range(model, contrast, nsteps=2, values=None, mean_ind=0):
+    """Get model prediction for a range of values across one regressor."""
+
+    steps = np.linspace(model.design_matrix[:, contrast].min(),
+                        model.design_matrix[:, contrast].max(),
+                        nsteps)
+    pred = np.zeros((nsteps, *model.betas.shape[1:]))
+
+    # Run projection
+    for ii in range(nsteps):
+        if nsteps == 1:
+            coeff = 0
+        else:
+            coeff = steps[ii]
+        pred[ii, ...] = model.betas[:2, ...].mean(axis=0) + coeff*model.betas[contrast, ...]
+
+    # Compute label values
+    if nsteps > 1:
+        scale = model.regressor_list[contrast].values_orig
+        llabels = np.linspace(scale.min(), scale.max(), nsteps)
+    else:
+        llabels = ['Mean']
+    return pred, llabels
+
+plt.figure(figsize=(16, 9))
+
+# Open mean & Closed Mean
+ax = plt.axes([0.075, 0.5, 0.175, 0.4])
+fl_mean_data = deepcopy(clean_data)
+fl_mean_data.data = clean_data.data[:, 0, : ,:]
+lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[13], raw, ax, xvect=freq_vect, base=0.5)
+ax.set_ylabel('t-stat')
+lemon_plotting.subpanel_label(ax, 'A')
+plt.title('Between Subject Sex')
+
+ax = plt.axes([0.075, 0.1, 0.175, 0.30])
+proj, llabels = project_range(gmodel, 2)
+plt.plot(fx[0], proj[0, 0, :, :].mean(axis=1))
+plt.plot(fx[0], proj[1, 0, :, :].mean(axis=1))
+plt.legend(['Female', 'Male'], frameon=False)
+lemon_plotting.decorate_spectrum(ax, ylabel='FFT Magnitude')
+ax.set_xticks(fx[2], fx[1])
+
+# Young and Old Means
+ax = plt.axes([0.3125, 0.5, 0.175, 0.4])
+fl_mean_data = deepcopy(clean_data)
+fl_mean_data.data = clean_data.data[:, 0, : ,:]
+lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[14], raw, ax, xvect=freq_vect, base=0.5)
+ax.set_ylabel('t-stat')
+lemon_plotting.subpanel_label(ax, 'B')
+plt.title('Between Subject\nTotal Brain Volume')
+
+ax = plt.axes([0.3125, 0.1, 0.175, 0.3])
+proj, llabels = project_range(gmodel, 3, nsteps=3)
+plt.plot(fx[0], proj[0, 0, :, :].mean(axis=1))
+plt.plot(fx[0], proj[1, 0, :, :].mean(axis=1))
+plt.plot(fx[0], proj[2, 0, :, :].mean(axis=1))
+lemon_plotting.decorate_spectrum(ax, ylabel='FFT Magnitude')
+ax.set_xticks(fx[2], fx[1])
+plt.legend(llabels, frameon=False)
+
+# Interactions
+ax = plt.axes([0.55, 0.5, 0.175, 0.4])
+fl_mean_data = deepcopy(clean_data)
+fl_mean_data.data = clean_data.data[:, 0, : ,:]
+lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P[15], raw, ax, xvect=freq_vect, base=0.5)
+ax.set_ylabel('t-stat')
+lemon_plotting.subpanel_label(ax, 'C')
+plt.title('Between Subject\nGrey Matter Volume')
+
+ax = plt.axes([0.55, 0.1, 0.175, 0.3])
+proj, llabels = project_range(gmodel, 4, nsteps=3)
+plt.plot(fx[0], proj[0, 0, :, :].mean(axis=1))
+plt.plot(fx[0], proj[1, 0, :, :].mean(axis=1))
+plt.plot(fx[0], proj[2, 0, :, :].mean(axis=1))
+lemon_plotting.decorate_spectrum(ax, ylabel='FFT Magnitude')
+ax.set_xticks(fx[2], fx[1])
+plt.legend(llabels, frameon=False)
+
+ax = plt.axes([0.775, 0.7, 0.2, 0.2])
+lemon_plotting.plot_channel_layout(ax, raw, size=100)
+
+fout = os.path.join(cfg['lemon_figures'], 'lemon-group_group-glm-covariates.png')
 plt.savefig(fout, transparent=True, dpi=300)
 
 
@@ -506,12 +577,6 @@ ax_eo_f.spines['left'].set_bounds(0.7, 1.1)
 ax_eo_f.set_xlabel('Frequency (Hz)')
 lemon_plotting.subpanel_label(ax_eo_f, 'B')
 
-#con1 = ConnectionPatch(xyA=(6, 0), xyB=(6, 1.1), coordsA="data", coordsB="data",
-#                      axesA=ax_eo, axesB=ax_eo_f, color="black")
-#ax_eo.add_artist(con1)
-#con2 = ConnectionPatch(xyA=(14, 0), xyB=(14, 1.1), coordsA="data", coordsB="data",
-#                      axesA=ax_eo, axesB=ax_eo_f, color="black")
-#ax_eo.add_artist(con2)
 
 yy = ff[1, data.info['age_group']==False]
 yy = yy[np.logical_not(np.isnan(yy))]
@@ -561,13 +626,6 @@ for tag in ['top', 'right']:
 ax_ec_f.spines['left'].set_bounds(0.7, 1.1)
 ax_ec_f.set_xlabel('Frequency (Hz)')
 lemon_plotting.subpanel_label(ax_ec_f, 'E')
-
-#con3 = ConnectionPatch(xyA=(6, 0), xyB=(6, 1.1), coordsA="data", coordsB="data",
-#                      axesA=ax_ec, axesB=ax_ec_f, color="black")
-#ax_ec.add_artist(con3)
-#con4 = ConnectionPatch(xyA=(14, 0), xyB=(14, 1.1), coordsA="data", coordsB="data",
-#                      axesA=ax_ec, axesB=ax_ec_f, color="black")
-#ax_ec.add_artist(con4)
 
 yy = ff[1, data.info['age_group']==False]
 yy = yy[np.logical_not(np.isnan(yy))]
