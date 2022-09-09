@@ -189,8 +189,9 @@ plt.savefig(fout, dpi=300, transparent=True)
 #%% ---------------------------------------------------------
 # Single channel permutation statistics
 
-tstat_args = {'hat_factor': 5e-3, 'varcope_smoothing': 'medfilt', 'window_size': 15, 'smooth_dims': 1}
-tstat_args2 = {'hat_factor': 5e-3, 'varcope_smoothing': 'medfilt', 'window_size': 15, 'smooth_dims': 0}
+tstat_args = {'varcope_smoothing': 'medfilt', 'window_size': 15, 'smooth_dims': 1}
+tstat_args_for_plotting = {'varcope_smoothing': 'medfilt', 'window_size': 15, 'smooth_dims': 0}
+
 
 data_pz = deepcopy(data)
 data_pz.data = data.data[:, :, ch_ind]
@@ -201,12 +202,14 @@ P1 = glm.permutations.ClusterPermutation(design, data_pz, con_ind[0], 500,
                                          pooled_dims=[1],
                                          tstat_args=tstat_args,
                                          cluster_forming_threshold=3,
+                                         perm_type='roll',
                                          metric='tstats')
 # BLINKS
 P2 = glm.permutations.ClusterPermutation(design,data_pz, con_ind[1], 500,
                                          pooled_dims=[1],
                                          tstat_args=tstat_args,
                                          cluster_forming_threshold=3,
+                                         perm_type='roll',
                                          metric='tstats')
 
 #%% ---------------------------------------------
@@ -244,12 +247,12 @@ for ii in range(len(con_ind)):
 
     ax = plt.axes([0.4+ii*0.3, 0.1, 0.25, 0.5])
     P = P1 if ii == 0 else P2
-    clu = P.get_sig_clusters(data_pz, 99)
+    clu = P.get_sig_clusters(data_pz, 95)
     if clu[0] is not None:
         for idx, c in enumerate(clu[1]):
             tinds = np.where(clu[0]==idx+1)[0]
             ax.axvspan(fx[tinds[0]], fx[tinds[-1]], facecolor=[0.7, 0.7, 0.7], alpha=0.5)
-    ts = glm.fit.get_tstats(model.copes[con_ind[ii], :, ch_ind], model.varcopes[con_ind[ii], :, ch_ind], **tstat_args2)
+    ts = glm.fit.get_tstats(model.copes[con_ind[ii], :, ch_ind], model.varcopes[con_ind[ii], :, ch_ind], **tstat_args_for_plotting)
     ax.plot(fx, ts)
     name = model.contrast_names[P.contrast_idx]
     ax.text(0.5, 1.7, f'Contrast : {name}', ha='center', transform=ax.transAxes, fontsize='large')
@@ -264,7 +267,7 @@ for ii in range(len(con_ind)):
 fout = os.path.join(outdir, '{subj_id}_single-channel_glm-bottom.png'.format(subj_id=subj_id))
 plt.savefig(fout, dpi=300, transparent=True)
 
-
+eye
 #%% --------------------------------------------------------
 # Whole head permutation statistics
 
@@ -275,7 +278,7 @@ ntimes = data.data.shape[1]
 adjacency = mne.stats.cluster_level._setup_adjacency(adjacency, ntests, ntimes)
 
 cft = 3
-tstat_args = {'hat_factor': 5e-3, 'varcope_smoothing': 'medfilt', 'window_size': 15, 'smooth_dims': 1}
+tstat_args = {'varcope_smoothing': 'medfilt', 'window_size': 15, 'smooth_dims': 1}
 
 P = []
 run_perms = True
@@ -287,6 +290,7 @@ for icon in range(1, design.num_contrasts):
                                                    metric='tstats',
                                                    tstat_args=tstat_args,
                                                    cluster_forming_threshold=cft,
+                                                   perm_type='roll',
                                                    adjacency=adjacency)
 
         with open(fpath, "wb") as dill_file:
