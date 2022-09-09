@@ -23,13 +23,54 @@ from lemon_support import (lemon_make_blinks_regressor,
 
 from glm_config import cfg
 
+
+## FROM STATSMODELS FOR NOW
+def durbin_watson(resids, axis=0):
+    r"""
+    Calculates the Durbin-Watson statistic.
+
+    Parameters
+    ----------
+    resids : array_like
+        Data for which to compute the Durbin-Watson statistic. Usually
+        regression model residuals.
+    axis : int, optional
+        Axis to use if data has more than 1 dimension. Default is 0.
+
+    Returns
+    -------
+    dw : float, array_like
+        The Durbin-Watson statistic.
+
+    Notes
+    -----
+    The null hypothesis of the test is that there is no serial correlation
+    in the residuals.
+    The Durbin-Watson test statistic is defined as:
+
+    .. math::
+
+       \sum_{t=2}^T((e_t - e_{t-1})^2)/\sum_{t=1}^Te_t^2
+
+    The test statistic is approximately equal to 2*(1-r) where ``r`` is the
+    sample autocorrelation of the residuals. Thus, for r == 0, indicating no
+    serial correlation, the test statistic equals 2. This statistic will
+    always be between 0 and 4. The closer to 0 the statistic, the more
+    evidence for positive serial correlation. The closer to 4, the more
+    evidence for negative serial correlation.
+    """
+    resids = np.asarray(resids)
+    diff_resids = np.diff(resids, 1, axis=axis)
+    dw = np.sum(diff_resids**2, axis=axis) / np.sum(resids**2, axis=axis)
+    return dw
+
 #%% ----------------------------------------------------------
 # GLM-Prep
 
 fbase = os.path.join(cfg['lemon_processed_data'], '{subj}_preproc_raw.fif')
 st = osl.utils.Study(fbase)
 
-fname = st.get(subj='subj-010060')
+fname = st.get(subj='sub-010060')[0]
 
 runname = fname.split('/')[-1].split('.')[0]
 print('processing : {0}'.format(runname))
@@ -48,14 +89,7 @@ chlabels = np.array(raw.info['ch_names'], dtype=h5py.special_dtype(vlen=str))[pi
 # GLM-Prep
 
 # Make blink regressor
-fout = os.path.join(outdir, '{subj_id}_blink-summary.png'.format(subj_id=subj_id))
-blink_vect, numblinks, evoked_blink = lemon_make_blinks_regressor(raw, figpath=fout)
-
-fout = os.path.join(outdir, '{subj_id}_icaeog-summary.png'.format(subj_id=subj_id))
-quick_plot_eog_icas(raw, ica, figpath=fout)
-
-fout = os.path.join(outdir, '{subj_id}_{0}.png'.format('{0}', subj_id=subj_id))
-quick_plot_eog_epochs(raw, figpath=fout)
+blink_vect, numblinks, evoked_blink = lemon_make_blinks_regressor(raw, figpath=None)
 
 veog = raw.get_data(picks='ICA-VEOG')[0, :]**2
 veog = veog > np.percentile(veog, 97.5)
@@ -85,15 +119,21 @@ conts = [{'name': 'Mean', 'values':{'Eyes Open': 0.5, 'Eyes Closed': 0.5}},
 
 fs = raw.info['sfreq']
 
-npersegs = np.array([fs/5, fs/2, fs, fs*2, fs*5])
 
 #%% ----------------------------------------------------------
-# GLM-Prep
+# GLM-Run
 
-xc = []
-dw = []
+npersegs = np.array([100, fs, fs*2, fs*5])
 
-for ii in range(len(npersegs)):
+xc1 = []
+dw1 = []
+ff1 = []
+
+xc2 = []
+dw2 = []
+ff2 = []
+
+for nn in range(len(npersegs)):
     # Full model
     freq_vect, copes, varcopes, extras = sails.stft.glm_periodogram(XX, axis=0,
                                                                     fit_constant=False,
@@ -101,11 +141,11 @@ for ii in range(len(npersegs)):
                                                                     covariates=covs,
                                                                     confounds=confs,
                                                                     contrasts=conts,
-                                                                    nperseg=int(npersegs[ii]),
+                                                                    nperseg=int(npersegs[nn]),
+                                                                    noverlap=int(npersegs[nn]//2),
                                                                     fmin=0.1, fmax=100,
                                                                     fs=fs, mode='magnitude',
                                                                     fit_method='glmtools')
-    model, design, data = extras
 
     resids = extras[0].get_residuals(extras[2].data)
 
@@ -119,4 +159,50 @@ for ii in range(len(npersegs)):
             xc_iter[ii, jj] = np.corrcoef(resids[1:, ii, jj], resids[:-1, ii, jj])[1, 0]
             dw_iter[ii, jj] = durbin_watson(resids[:, ii, jj])
 
+    dw1.append(dw_iter)
+    xc1.append(xc_iter)
+    ff1.append(freq_vect)
 
+    # Full model
+    freq_vect, copes, varcopes, extras = sails.stft.glm_periodogram(XX, axis=0,
+                                                                    fit_constant=False,
+                                                                    conditions=conds,
+                                                                    covariates=covs,
+                                                                    confounds=confs,
+                                                                    contrasts=conts,
+                                                                    nperseg=int(npersegs[nn]),
+                                                                    noverlap=int(npersegs[nn]//4),
+                                                                    fmin=0.1, fmax=100,
+                                                                    fs=fs, mode='magnitude',
+                                                                    fit_method='glmtools')
+
+    resids = extras[0].get_residuals(extras[2].data)[10:, :, :]
+
+    xc_iter = np.zeros((resids.shape[1], 61))
+    dw_iter = np.zeros((resids.shape[1], 61))
+
+    for ii in range(resids.shape[1]):
+        print(ii)
+        for jj in range(61):
+            #o = plt.xcorr(resids[:, ii, jj], resids[:, ii, jj], maxlags=2)
+            xc_iter[ii, jj] = np.corrcoef(resids[1:, ii, jj], resids[:-1, ii, jj])[1, 0]
+            dw_iter[ii, jj] = durbin_watson(resids[:, ii, jj])
+
+    dw2.append(dw_iter)
+    xc2.append(xc_iter)
+    ff2.append(freq_vect)
+
+#%% --------------------------------------------------------------
+
+plt.figure()
+
+for ii in range(len(npersegs)):
+    plt.subplot(2, len(npersegs), ii+1)
+    plt.pcolormesh(np.arange(61), ff1[ii], np.abs(2-dw1[ii]) < 0.5, vmin=0, vmax=4, cmap='RdBu_r')
+    if ii == len(npersegs) - 1:
+        plt.colorbar()
+
+    plt.subplot(2, len(npersegs), ii+len(npersegs)+1)
+    plt.pcolormesh(np.arange(61), ff2[ii], np.abs(2-dw2[ii]) < 0.5, vmin=0, vmax=4, cmap='RdBu_r')
+    if ii == len(npersegs) - 1:
+        plt.colorbar()
