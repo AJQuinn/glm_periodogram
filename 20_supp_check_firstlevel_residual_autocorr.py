@@ -59,6 +59,7 @@ def durbin_watson(resids, axis=0):
     evidence for positive serial correlation. The closer to 4, the more
     evidence for negative serial correlation.
     """
+    # This function has been borrowed from statsmodels
     resids = np.asarray(resids)
     diff_resids = np.diff(resids, 1, axis=axis)
     dw = np.sum(diff_resids**2, axis=axis) / np.sum(resids**2, axis=axis)
@@ -133,7 +134,38 @@ xc2 = []
 dw2 = []
 ff2 = []
 
+xc3 = []
+dw3 = []
+ff3 = []
+
 for nn in range(len(npersegs)):
+    # Full model
+    freq_vect, copes, varcopes, extras = sails.stft.glm_periodogram(XX, axis=0,
+                                                                    fit_constant=False,
+                                                                    conditions=conds,
+                                                                    covariates=covs,
+                                                                    confounds=confs,
+                                                                    contrasts=conts,
+                                                                    nperseg=int(npersegs[nn]),
+                                                                    noverlap=1,
+                                                                    fmin=0.1, fmax=100,
+                                                                    fs=fs, mode='magnitude',
+                                                                    fit_method='glmtools')
+
+    resids = extras[0].get_residuals(extras[2].data)
+
+    xc_iter = np.zeros((resids.shape[1], 61))
+    dw_iter = np.zeros((resids.shape[1], 61))
+
+    for ii in range(resids.shape[1]):
+        for jj in range(61):
+            xc_iter[ii, jj] = np.corrcoef(resids[1:, ii, jj], resids[:-1, ii, jj])[1, 0]
+            dw_iter[ii, jj] = durbin_watson(resids[:, ii, jj])
+
+    dw1.append(dw_iter)
+    xc1.append(xc_iter)
+    ff1.append(freq_vect)
+
     # Full model
     freq_vect, copes, varcopes, extras = sails.stft.glm_periodogram(XX, axis=0,
                                                                     fit_constant=False,
@@ -153,15 +185,13 @@ for nn in range(len(npersegs)):
     dw_iter = np.zeros((resids.shape[1], 61))
 
     for ii in range(resids.shape[1]):
-        print(ii)
         for jj in range(61):
-            #o = plt.xcorr(resids[:, ii, jj], resids[:, ii, jj], maxlags=2)
             xc_iter[ii, jj] = np.corrcoef(resids[1:, ii, jj], resids[:-1, ii, jj])[1, 0]
             dw_iter[ii, jj] = durbin_watson(resids[:, ii, jj])
 
-    dw1.append(dw_iter)
-    xc1.append(xc_iter)
-    ff1.append(freq_vect)
+    dw2.append(dw_iter)
+    xc2.append(xc_iter)
+    ff2.append(freq_vect)
 
     # Full model
     freq_vect, copes, varcopes, extras = sails.stft.glm_periodogram(XX, axis=0,
@@ -171,7 +201,7 @@ for nn in range(len(npersegs)):
                                                                     confounds=confs,
                                                                     contrasts=conts,
                                                                     nperseg=int(npersegs[nn]),
-                                                                    noverlap=int(npersegs[nn]//4),
+                                                                    noverlap=3*int(npersegs[nn]//4),
                                                                     fmin=0.1, fmax=100,
                                                                     fs=fs, mode='magnitude',
                                                                     fit_method='glmtools')
@@ -182,27 +212,46 @@ for nn in range(len(npersegs)):
     dw_iter = np.zeros((resids.shape[1], 61))
 
     for ii in range(resids.shape[1]):
-        print(ii)
         for jj in range(61):
-            #o = plt.xcorr(resids[:, ii, jj], resids[:, ii, jj], maxlags=2)
             xc_iter[ii, jj] = np.corrcoef(resids[1:, ii, jj], resids[:-1, ii, jj])[1, 0]
             dw_iter[ii, jj] = durbin_watson(resids[:, ii, jj])
 
-    dw2.append(dw_iter)
-    xc2.append(xc_iter)
-    ff2.append(freq_vect)
+    dw3.append(dw_iter)
+    xc3.append(xc_iter)
+    ff3.append(freq_vect)
 
 #%% --------------------------------------------------------------
 
-plt.figure()
+plt.figure(figsize=(16,16))
 
 for ii in range(len(npersegs)):
-    plt.subplot(2, len(npersegs), ii+1)
-    plt.pcolormesh(np.arange(61), ff1[ii], np.abs(2-dw1[ii]) < 0.5, vmin=0, vmax=4, cmap='RdBu_r')
+    plt.subplot(3, len(npersegs), ii+1)
+    plt.pcolormesh(np.arange(61), ff1[ii], np.abs(dw1[ii]), vmin=0, vmax=4, cmap='RdBu')
     if ii == len(npersegs) - 1:
         plt.colorbar()
+    plt.title('nperseg: {0}, nstep: {1}'.format(int(npersegs[ii]), int(npersegs[ii]-1)))
 
-    plt.subplot(2, len(npersegs), ii+len(npersegs)+1)
-    plt.pcolormesh(np.arange(61), ff2[ii], np.abs(2-dw2[ii]) < 0.5, vmin=0, vmax=4, cmap='RdBu_r')
+    if ii == 0:
+        plt.ylabel('Frequency (Hz)')
+
+    plt.subplot(3, len(npersegs), ii+len(npersegs)+1)
+    plt.pcolormesh(np.arange(61), ff2[ii], np.abs(dw2[ii]), vmin=0, vmax=4, cmap='RdBu')
     if ii == len(npersegs) - 1:
         plt.colorbar()
+    plt.title('nperseg: {0}, nstep: {1}'.format(int(npersegs[ii]), int(npersegs[ii]//2)))
+
+    if ii == 0:
+        plt.ylabel('Frequency (Hz)')
+
+    plt.subplot(3, len(npersegs), ii+2*len(npersegs)+1)
+    plt.pcolormesh(np.arange(61), ff3[ii], np.abs(dw3[ii]), vmin=0, vmax=4, cmap='RdBu')
+    if ii == len(npersegs) - 1:
+        plt.colorbar()
+    plt.xlabel('Sensor')
+    plt.title('nperseg: {0}, nstep: {1}'.format(int(npersegs[ii]), int(npersegs[ii]//4)))
+
+    if ii == 0:
+        plt.ylabel('Frequency (Hz)')
+
+fout = os.path.join(cfg['lemon_figures'], 'lemon-group_first-level-residualautocorrelation-check.png')
+plt.savefig(fout, transparent=True, dpi=300)
