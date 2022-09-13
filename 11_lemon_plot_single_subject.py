@@ -96,7 +96,7 @@ stft_time = np.arange(config.nperseg/2, XX.shape[0] - config.nperseg/2 + 1,
 stft_time = stft_time[stft_inds] - stft_time[stft_inds[0]] + 1
 
 stft_dm = design.design_matrix[stft_inds, :]
-stft_dm[:, 2] = np.linspace(-1, 1, len(stft_inds)) # Exaggerate linear trend a bit to help visualisation
+stft_dm[:, 3] = np.linspace(-1, 1, len(stft_inds)) # Exaggerate linear trend a bit to help visualisation
 
 f = sails.stft._set_freqvalues(config.nfft, config.fs, 'onesided')
 fidx = (f >= config.fmin) & (f <= config.fmax)
@@ -104,8 +104,6 @@ f = f[fidx]
 
 # prep sqrt(f) axes
 fx, ftl, ft = lemon_plotting.prep_scaled_freq(0.5, f)
-
-
 
 
 #%% ------------------------------------------------------------
@@ -196,7 +194,7 @@ tstat_args_for_plotting = {'varcope_smoothing': 'medfilt', 'window_size': 15, 's
 data_pz = deepcopy(data)
 data_pz.data = data.data[:, :, ch_ind]
 
-con_ind = [1, 7]
+con_ind = [4, 10]
 
 P1 = glm.permutations.ClusterPermutation(design, data_pz, con_ind[0], 500,
                                          pooled_dims=[1],
@@ -267,10 +265,8 @@ for ii in range(len(con_ind)):
 fout = os.path.join(outdir, '{subj_id}_single-channel_glm-bottom.png'.format(subj_id=subj_id))
 plt.savefig(fout, dpi=300, transparent=True)
 
-eye
 #%% --------------------------------------------------------
 # Whole head permutation statistics
-
 
 adjacency, ch_names = mne.channels.channels._compute_ch_adjacency(dataset['raw'].info, 'eeg')
 ntests = np.prod(data.data.shape[1:])
@@ -281,8 +277,9 @@ cft = 3
 tstat_args = {'varcope_smoothing': 'medfilt', 'window_size': 15, 'smooth_dims': 1}
 
 P = []
-run_perms = True
-for icon in range(1, design.num_contrasts):
+C = []
+run_perms = False
+for icon in range(4, design.num_contrasts):
     fpath = os.path.join(cfg['lemon_glm_data'], '{subj_id}_perms-con{icon}.pkl'.format(subj_id=subj_id, icon=icon))
     if run_perms:
         p = glm.permutations.MNEClusterPermutation(design, data, icon, 1000,
@@ -297,9 +294,11 @@ for icon in range(1, design.num_contrasts):
             dill.dump(p, dill_file)
 
         P.append(p)
+        C.append(design.contrast_names[icon])  # sanity check
     else:
         with open(fpath, 'rb') as dill_file:
             P.append(dill.load(dill_file))
+            C.append(design.contrast_names[icon])  # sanity check
 
 
 #%% --------------------------------------------------------
@@ -315,20 +314,21 @@ col_heads = ['Mean', 'Linear Trend', 'Rest Condition', 'Bad Segments', 'VEOG', '
 #rawref = dataset['raw'].copy().pick_types(eeg=True)
 
 plt.figure(figsize=(16, 16))
-ax = plt.axes([0.075, 0.6, 0.175, 0.2])
+ax = plt.axes([0.075, 0.6, 0.175, 0.3])
 ax.set_ylim(0, 2e-5)
 lemon_plotting.plot_joint_spectrum(ax, model.copes[2, :, :], rawref, xvect=f,
                         freqs=[9], base=0.5, topo_scale=None,
                         ylabel='Amplitude', title=model.contrast_names[2])
 lemon_plotting.subpanel_label(ax, chr(65), yf=1.6)
 
-ax = plt.axes([0.3125, 0.6, 0.175, 0.2])
+ax = plt.axes([0.3125, 0.6, 0.175, 0.3])
 ax.set_ylim(0, 2e-5)
 lemon_plotting.plot_joint_spectrum(ax, model.copes[3, :, :], rawref, xvect=f,
                         freqs=[9], base=0.5, topo_scale=None,
                         ylabel='Amplitude', title=model.contrast_names[3])
 lemon_plotting.subpanel_label(ax, chr(66), yf=1.6)
 
+# Plot Open > Closd
 ax = plt.axes([0.55, 0.6, 0.175, 0.3])
 lemon_plotting.plot_sensorspace_clusters(data, P[0], rawref, ax, xvect=f,
                               ylabel='t-stat', base=0.5, topo_scale=None,
@@ -338,21 +338,23 @@ lemon_plotting.subpanel_label(ax, chr(67), yf=1.6)
 ax = plt.axes([0.775, 0.6, 0.2, 0.2])
 lemon_plotting.plot_channel_layout(ax, rawref, size=100)
 
+# Plot covariates
 for ii in range(5):
     ax = plt.axes([0.065+ii*0.195, 0.25, 0.125, 0.2])
-    lemon_plotting.plot_sensorspace_clusters(data, P[ii+3], rawref, ax, xvect=f,
+    print(C[ii+4])
+    lemon_plotting.plot_sensorspace_clusters(data, P[ii+4], rawref, ax, xvect=f,
                                   ylabel='t-stat', base=0.5, topo_scale=None,
-                                  title=model.contrast_names[P[ii+3].contrast_idx])
+                                  title=model.contrast_names[P[ii+4].contrast_idx])
     lemon_plotting.subpanel_label(ax, chr(68+ii), yf=1.6)
 
     ax2 = plt.axes([0.065+ii*0.195, 0.07, 0.125, 0.2*2/3])
     ax2.set_ylim(0, 1.5e-5)
-    proj,llabels = model.project_range(P[ii+3].contrast_idx-2, nsteps=2)
+    proj,llabels = model.project_range(P[ii+4].contrast_idx-5, nsteps=2)
     lemon_plotting.plot_sensor_data(ax2, proj.mean(axis=2).T, rawref, xvect=f, base=0.5, sensor_cols=False, lw=2)
     ylabel = 'Amplitude' if ii == 0 else ''
     lemon_plotting.decorate_spectrum(ax2, ylabel=ylabel)
     ax2.legend(ll[ii], frameon=False, fontsize=8)
-    ax.set_title(model.contrast_names[P[ii+3].contrast_idx])
+    ax.set_title(model.contrast_names[P[ii+4].contrast_idx])
 
 fout = os.path.join(outdir, '{subj_id}_whole-head-glm-summary.png'.format(subj_id=subj_id))
 plt.savefig(fout, dpi=300, transparent=True)
@@ -367,27 +369,34 @@ plt.subplots_adjust(wspace=0.4, hspace=0.5, top=0.95, bottom=0.05)
 labels = []
 
 ref = models[0].r_square[0, :, :]
-for ii in range(8):
-    ax = plt.subplot(3, 4, ii+1)
-    change =  models[ii].r_square[0, :, :] * 100
-    if ii == 3:
-        lemon_plotting.plot_sensor_spectrum(ax, change, rawref, f, base=0.5, sensor_proj=True)
-    else:
+for ii in range(10):
+    ax = plt.subplot(3, 5, ii+1)
+    if ii == 4:
+        lemon_plotting.plot_channel_layout(ax, rawref)
+        continue
+    elif ii < 4:
+        change =  models[ii].r_square[0, :, :] * 100
         lemon_plotting.plot_sensor_spectrum(ax, change, rawref, f, base=0.5)
+        label = 'Full Model' if ii == 0 else "'{0}' only".format(models[0].regressor_names[ii-1])
+        lemon_plotting.subpanel_label(ax, chr(65+ii))
+    else:
+        change =  models[ii-1].r_square[0, :, :] * 100
+        lemon_plotting.plot_sensor_spectrum(ax, change, rawref, f, base=0.5)
+        label = "'{0}' only".format(models[0].regressor_names[ii-2])
+        lemon_plotting.subpanel_label(ax, chr(65+ii-1))
+
     ax.set_ylabel('R-squared (%)')
-    label = 'Full Model' if ii == 0 else "'{0}' only".format(models[0].regressor_names[ii-1])
     ax.set_title(label)
     labels.append(label)
     ax.set_ylim(0, 80)
-    lemon_plotting.subpanel_label(ax, chr(65+ii))
 
 ax = plt.subplot(313)
-for ii in range(8):
-    x = models[7-ii].r_square.flatten() * 100
+for ii in range(9):
+    x = models[8-ii].r_square.flatten() * 100
     y = np.random.normal(ii+1, 0.05, size=len(x))
     plt.plot(x, y, 'r.', alpha=0.2)
 h = plt.boxplot([m.r_square.flatten() * 100 for m in models[::-1]], vert=False, showfliers=False)
-plt.yticks(np.arange(1,9),labels[::-1])
+plt.yticks(np.arange(1,10),labels[::-1])
 for tag in ['top', 'right']:
     ax.spines[tag].set_visible(False)
 ax.set_xlabel('R-Squared (%)')
@@ -396,7 +405,7 @@ pos = list(ax.get_position().bounds)
 pos[0] += 0.15
 pos[2] -= 0.2
 ax.set_position(pos)
-lemon_plotting.subpanel_label(ax, chr(65+8))
+lemon_plotting.subpanel_label(ax, chr(65+9))
 
 fout = os.path.join(outdir, '{subj_id}_whole-head_glm-modelselection.png'.format(subj_id=subj_id))
 plt.savefig(fout, dpi=300, transparent=True)

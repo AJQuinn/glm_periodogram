@@ -9,6 +9,7 @@ import glmtools as glm
 
 from anamnesis import obj_from_hdf5file
 import matplotlib.pyplot as plt
+plt.switch_backend('agg')
 
 import numpy as np
 from dask.distributed import Client
@@ -76,38 +77,43 @@ def run_first_level(fname, outdir):
     # Run GLM-Periodogram
     conds = {'Eyes Open': task == 1, 'Eyes Closed': task == -1}
     covs = {'Linear Trend': np.linspace(0, 1, raw.n_times)}
-    confs = {'Bad Segments': bads_raw,
-             'Bad Segments Diff': bads_diff,
+    confs = {'Bad Segs': bads_raw,
+             'Bad Segs Diff': bads_diff,
              'V-EOG': veog, 'H-EOG': heog}
-    conts = [{'name': 'Mean', 'values':{'Eyes Open': 0.5, 'Eyes Closed': 0.5}},
-             {'name': 'Open < Closed', 'values':{'Eyes Open': 1, 'Eyes Closed': -1}}]
+    conts = [{'name': 'OverallMean', 'values':{'Constant': 1, 
+                                               'Eyes Open': np.round(np.sum(task==1)/len(task),3), 
+                                               'Eyes Closed': np.round(np.sum(task==-1)/len(task),3)}},
+             {'name': 'RestMean', 'values':{'Eyes Open': 0.5, 'Eyes Closed': 0.5}},
+             {'name': 'Eyes Open AbsEffect', 'values':{'Constant': 1, 'Eyes Open': 0.5}},
+             {'name': 'Eyes Closed AbsEffect', 'values':{'Constant': 1, 'Eyes Closed': 0.5}},
+             {'name': 'Open > Closed', 'values':{'Eyes Open': 1, 'Eyes Closed': -1}}]
 
     fs = raw.info['sfreq']
 
-    # Null model
-    freq_vect0, copes0, varcopes0, extras0 = sails.stft.glm_periodogram(XX, axis=0,
-                                                                    fit_constant=False,
-                                                                    conditions=conds,
-                                                                    contrasts=conts,
-                                                                    nperseg=int(fs*2),
-                                                                    fmin=0.1, fmax=100,
-                                                                    fs=fs, mode='magnitude',
-                                                                    fit_method='glmtools')
+    # Reduced model - no confounds or covariates
+    freq_vect0, copes0, varcopes0, extras0 = sails.stft.glm_periodogram(
+        XX, axis=0, fit_constant=True,
+        conditions=conds, contrasts=conts,
+        nperseg=int(fs * 2), noverlap=int(fs),
+        fmin=0.1, fmax=100, fs=fs,
+        mode="magnitude", fit_method="glmtools",
+    )
     model0, design0, data0 = extras0
     print(model0.contrast_names)
     print(model0.design_matrix.shape)
 
+    fs = raw.info['sfreq']
+
     # Full model
-    freq_vect, copes, varcopes, extras = sails.stft.glm_periodogram(XX, axis=0,
-                                                                    fit_constant=False,
-                                                                    conditions=conds,
-                                                                    covariates=covs,
-                                                                    confounds=confs,
-                                                                    contrasts=conts,
-                                                                    nperseg=int(fs*2),
-                                                                    fmin=0.1, fmax=100,
-                                                                    fs=fs, mode='magnitude',
-                                                                    fit_method='glmtools')
+    freq_vect, copes, varcopes, extras = sails.stft.glm_periodogram(
+        XX, axis=0, fit_constant=True,
+        conditions=conds, covariates=covs,
+        confounds=confs, contrasts=conts,
+        nperseg=int(fs * 2), noverlap=int(fs),
+        fmin=0.1, fmax=100, fs=fs,
+        mode="magnitude", fit_method="glmtools",
+    )
+
     model, design, data = extras
     print(model.contrast_names)
     print(model.design_matrix.shape)
@@ -115,7 +121,7 @@ def run_first_level(fname, outdir):
     data.info['dim_labels'] = ['Windows', 'Frequencies', 'Sensors']
 
     print('----')
-    print('Null Model AIC : {0} - R2 : {1}'.format(model0.aic.mean(), model0.r_square.mean()))
+    print('Reduced Model AIC : {0} - R2 : {1}'.format(model0.aic.mean(), model0.r_square.mean()))
     print('Full Model AIC : {0} - R2 : {1}'.format(model.aic.mean(), model.r_square.mean()))
 
     data.info['dim_labels'] = ['Windows', 'Frequencies', 'Sensors']
@@ -126,8 +132,9 @@ def run_first_level(fname, outdir):
         os.remove(hdfname)
     with h5py.File(hdfname, 'w') as F:
         model.to_hdf5(F.create_group('model'))
-        model0.to_hdf5(F.create_group('null_model'))
+        model0.to_hdf5(F.create_group('reduced_model'))
         design.to_hdf5(F.create_group('design'))
+        design0.to_hdf5(F.create_group('reduced_design'))
         data.to_hdf5(F.create_group('data'))
         F.create_dataset('freq_vect', data=freq_vect)
         F.create_dataset('chlabels', data=chlabels)
@@ -140,6 +147,8 @@ def run_first_level(fname, outdir):
     design.plot_efficiency(show=False, savepath=fout)
 
     quick_plot_firstlevel(hdfname, raw.filenames[0])
+
+    plt.close('all')
 
 
 def quick_plot_firstlevel(hdfname, rawpath):
@@ -176,14 +185,16 @@ def quick_plot_firstlevel(hdfname, rawpath):
 #        * None to run nothing and skip to group preparation
 subj = 'all'
 
-n_dask_workers = 4  # Number of dask parallel workers to use if subj is 'all'
+n_dask_workers = 1  # Number of dask parallel workers to use if subj is 'all'
 
+# Whether to collate first level results into group file, set to false if only running a single subject
+collate_first_levels = True
 
 if __name__ == '__main__':
 
 
     #%% -----------------------------------------------------------
-    #  Run first level GLMs - probably should dask-ify this...
+    #  Run first level GLMs
 
     proc_outdir = cfg['lemon_processed_data']
 
@@ -234,13 +245,13 @@ if __name__ == '__main__':
     num_blinks = []
 
     first_level = []
-    first_level_null = []
+    first_level_reduced = []
     r2 = []
-    r2_null = []
+    r2_reduced = []
     aic = []
-    aic_null = []
+    aic_reduced = []
     sw = []
-    sw_null = []
+    sw_reduced = []
 
     # Main loop - load first levels and store copes + meta data
     for idx, fname in enumerate(fnames):
@@ -248,15 +259,16 @@ if __name__ == '__main__':
 
         # Load data and design
         design = obj_from_hdf5file(fname, 'design')
+        reduced_design = obj_from_hdf5file(fname, 'reduced_design')
         data = obj_from_hdf5file(fname, 'data')
 
-        # Load null model
-        model = obj_from_hdf5file(fname, 'null_model')
-        model.design_matrix = design.design_matrix[:, :2]
-        first_level_null.append(model.copes[None, :, :, :])
-        r2_null.append(model.r_square.mean())
-        sw_null.append(model.get_shapiro(data.data).mean())
-        aic_null.append(model.aic.mean())
+        # Load reduced model
+        reduced_model = obj_from_hdf5file(fname, 'reduced_model')
+        reduced_model.design_matrix = reduced_design.design_matrix
+        first_level_reduced.append(reduced_model.copes[None, :, :, :])
+        r2_reduced.append(reduced_model.r_square.mean())
+        sw_reduced.append(reduced_model.get_shapiro(data.data).mean())
+        aic_reduced.append(reduced_model.aic.mean())
 
         # Load full model
         model = obj_from_hdf5file(fname, 'model')
@@ -293,13 +305,13 @@ if __name__ == '__main__':
         F.create_dataset('aic', data=aic)
         F.create_dataset('r2', data=r2)
 
-    first_level_null = np.concatenate(first_level_null, axis=0)
-    group_data = glm.data.TrialGLMData(data=first_level_null, subj_id=subj_id, shapiro=sw_null,
+    first_level_reduced = np.concatenate(first_level_reduced, axis=0)
+    group_data = glm.data.TrialGLMData(data=first_level_reduced, subj_id=subj_id, shapiro=sw_reduced,
                                        subj=subj, task=task, age=age, num_blinks=num_blinks,
-                                       sex=sex, scandur=scandur, aic=aic_null, r2=r2_null)
+                                       sex=sex, scandur=scandur, aic=aic_reduced, r2=r2_reduced)
 
-    outf = os.path.join(cfg['lemon_glm_data'], 'lemon_eeg_sensorglm_groupdata_null.hdf5')
+    outf = os.path.join(cfg['lemon_glm_data'], 'lemon_eeg_sensorglm_groupdata_reduced.hdf5')
     with h5py.File(outf, 'w') as F:
         group_data.to_hdf5(F.create_group('data'))
-        F.create_dataset('aic', data=aic_null)
-        F.create_dataset('r2', data=r2_null)
+        F.create_dataset('aic', data=aic_reduced)
+        F.create_dataset('r2', data=r2_reduced)
