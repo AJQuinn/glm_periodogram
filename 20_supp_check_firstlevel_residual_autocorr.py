@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from dask.distributed import Client
 
+import lemon_plotting
 from lemon_support import (lemon_make_blinks_regressor,
                            lemon_make_task_regressor,
                            lemon_make_bads_regressor,
@@ -233,6 +234,7 @@ for ii in range(len(npersegs)):
 
     if ii == 0:
         plt.ylabel('Frequency (Hz)')
+        lemon_plotting.subpanel_label(plt.gca(), 'A')
 
     plt.subplot(3, len(npersegs), ii+len(npersegs)+1)
     plt.pcolormesh(np.arange(61), ff2[ii], np.abs(dw2[ii]), vmin=0, vmax=4, cmap='RdBu')
@@ -242,6 +244,7 @@ for ii in range(len(npersegs)):
 
     if ii == 0:
         plt.ylabel('Frequency (Hz)')
+        lemon_plotting.subpanel_label(plt.gca(), 'B')
 
     plt.subplot(3, len(npersegs), ii+2*len(npersegs)+1)
     plt.pcolormesh(np.arange(61), ff3[ii], np.abs(dw3[ii]), vmin=0, vmax=4, cmap='RdBu')
@@ -252,6 +255,7 @@ for ii in range(len(npersegs)):
 
     if ii == 0:
         plt.ylabel('Frequency (Hz)')
+        lemon_plotting.subpanel_label(plt.gca(), 'C')
 
-fout = os.path.join(cfg['lemon_figures'], 'lemon-group_first-level-residualautocorrelation-check.png')
+fout = os.path.join(cfg['lemon_figures'], 'lemon-supp_first-level-residualautocorrelation-check.png')
 plt.savefig(fout, transparent=True, dpi=300)
