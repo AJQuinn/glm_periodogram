@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from dask.distributed import Client
 
+import lemon_plotting
 from lemon_support import (lemon_make_blinks_regressor,
                            lemon_make_task_regressor,
                            lemon_make_bads_regressor,
@@ -125,6 +126,7 @@ plt.subplot(3,3,1)
 plt.plot(data_pow.data.mean(axis=0))
 lemon_plotting.decorate_spectrum(plt.gca(), ylabel='Power')
 plt.title('Data Spectrum')
+lemon_plotting.subpanel_label(plt.gca(), 'A')
 plt.subplot(3,3,2)
 plt.hist(data_pow.data[:, ff, chan], 64)
 quick_decorate(plt.gca())
@@ -140,6 +142,7 @@ plt.title('Residual Distribution\n(single channel and freq)')
 plt.subplot(3,3,4)
 plt.plot(data.data.mean(axis=0))
 lemon_plotting.decorate_spectrum(plt.gca(), ylabel='Magnitude')
+lemon_plotting.subpanel_label(plt.gca(), 'B')
 plt.subplot(3,3,5)
 plt.hist(data.data[:, ff, chan], 64)
 quick_decorate(plt.gca())
@@ -153,6 +156,7 @@ plt.xlabel('Magnitude')
 plt.subplot(3,3,7)
 plt.plot(data_logpow.data.mean(axis=0))
 lemon_plotting.decorate_spectrum(plt.gca(), ylabel='log(Power)')
+lemon_plotting.subpanel_label(plt.gca(), 'C')
 plt.subplot(3,3,8)
 plt.hist(data_logpow.data[:, ff, chan], 64)
 quick_decorate(plt.gca())
@@ -165,5 +169,5 @@ plt.xlabel('log(Power)')
 
 plt.savefig('dist_check.png')
 
-fout = os.path.join(cfg['lemon_figures'], 'lemon-group_first-level-distribution-check.png')
+fout = os.path.join(cfg['lemon_figures'], 'lemon-supp_first-level-distribution-check.png')
 plt.savefig(fout, transparent=True, dpi=300)
