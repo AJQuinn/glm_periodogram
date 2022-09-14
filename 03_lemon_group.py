@@ -76,7 +76,9 @@ DC.add_regressor(name='Sex', rtype='Parametric', datainfo='sex', preproc='z')
 DC.add_regressor(name='TotalBrainVol', rtype='Parametric', datainfo='total_brain_vol', preproc='z')
 DC.add_regressor(name='GreyMatterVol', rtype='Parametric', datainfo='grey_matter_vol', preproc='z')
 
-DC.add_contrast(name='Mean',values={'Young': 0.5, 'Old': 0.5})
+young_prop = np.sum(np.array(data.info['age'])<40) / len(data.info['age'])
+
+DC.add_contrast(name='Mean',values={'Young': young_prop, 'Old': 1-young_prop})
 DC.add_contrast(name='Young>Old',values={'Young': 1, 'Old': -1})
 DC.add_simple_contrasts()
 
@@ -108,7 +110,7 @@ ntests = np.prod(data.data.shape[2:])
 ntimes = data.data.shape[2]
 adjacency = mne.stats.cluster_level._setup_adjacency(adjacency, ntests, ntimes)
 
-cft = 3
+cft = 3.5
 #cft = -stats.t.ppf(0.01, data.num_observations)
 tstat_args = {'varcope_smoothing': 'medfilt',
               'window_size': 15, 'smooth_dims': 1}
@@ -119,40 +121,49 @@ tstat_args = {'varcope_smoothing': 'medfilt',
 # Blinks on Mean, Mean on linear, task, blinks, bads
 P = []
 
-to_permute = [(0, 0, 'Overall Mean'),
-              (0, 4, 'Group Mean of Open>Closed'),
-              (0, 2, 'Group Mean of Open'),
-              (0, 3, 'Group Mean of Closed'),
-              (0, 8, 'Group Mean of Linear Trend'),
-              (0, 9, 'Group Mean of Bad Segments'),
-              (0, 10, 'Group Mean of Bad Segments Diff'),
-              (0, 11, 'Group Mean of VEOG'),
-              (0, 12, 'Group Mean of HEOG'),
-              (1, 0, 'Group Effect of Age on Mean'),
-              (1, 4, 'Group Effect of Age on Open>Closed'),
-              (1, 2, 'Group Effect of Age on Open'),
-              (1, 3, 'Group Effect of Age on Closed'),
-              (4, 0, 'Group Effect of Sex on Mean'),
-              (5, 0, 'Group Effect of HeadSize on Mean'),
-              (6, 0, 'Group Effect of GreyMatter on Mean')]
+#to_permute = [(0, 0, 'Overall Mean'),
+#              (0, 4, 'Group Mean of Open>Closed'),
+#              (0, 2, 'Group Mean of Open'),
+#              (0, 3, 'Group Mean of Closed'),
+#              (0, 8, 'Group Mean of Linear Trend'),
+#              (0, 9, 'Group Mean of Bad Segments'),
+#              (0, 10, 'Group Mean of Bad Segments Diff'),
+#              (0, 11, 'Group Mean of VEOG'),
+#              (0, 12, 'Group Mean of HEOG'),
+#              (1, 0, 'Group Effect of Age on Mean'),
+#              (1, 4, 'Group Effect of Age on Open>Closed'),
+#              (1, 2, 'Group Effect of Age on Open'),
+#              (1, 3, 'Group Effect of Age on Closed'),
+#              (4, 0, 'Group Effect of Sex on Mean'),
+#              (5, 0, 'Group Effect of HeadSize on Mean'),
+#              (6, 0, 'Group Effect of GreyMatter on Mean')]
 
+
+# Each line is  (group contrast, firstlevel contrast, group regressor, firstlevel regressor, savename)
+to_permute = (
+    (0, 4, (0, 1), 4, 'Mean_OpenClosed'),
+    (1, 0, (0, 1), (0, 1, 2), 'YoungOld_Mean'),
+    (1, 4, (0, 1), 4, 'YoungOld_OpenClosed'),
+    (0, 8, (0, 1), 3, 'Mean_Linear'),
+    (0, 9, (0, 1), 4, 'Mean_BadSeg'),
+    (0, 10, (0, 1), 5, 'Mean_DiffBadSeg'),
+    (0, 11, (0, 1), 6, 'Mean_VEOG'),
+    (0, 12, (0, 1), 7, 'Mean_HEOG'),
+    (4, 0, 2, (0, 1, 2), 'Sex_Mean'),
+    (5, 0, 3, (0, 1, 2), 'BrainVol_Mean'),
+    (6, 0, 4, (0, 1, 2), 'GreyVol_Mean'),
+)
 
 run_perms = False
-standardise = False
 for icon in range(len(to_permute)):
+    gl_con, fl_con, gl_reg, fl_reg, p_name = to_permute[icon]
+    print('### Contrast - {}'.format(p_name))
     if run_perms:
-        gl_con = to_permute[icon][0]
-        fl_con = to_permute[icon][1]
+        print('permuting')
         # Only working with mean regressor for the moment
         fl_mean_data = deepcopy(clean_data)
         fl_mean_data.data = clean_data.data[:, fl_con, : ,:]
 
-        if standardise:
-            #mn = fl_data.data.mean(axis=1)[:, None, :]
-            #st = fl_data.data.std(axis=1)[:, None, :]
-            factor = fl_mean_data.data.sum(axis=1)[:, None, :]
-            fl_mean_data.data = fl_mean_data.data / factor
-
         p = glm.permutations.MNEClusterPermutation(design, fl_mean_data, gl_con, 250,
                                                    nprocesses=8,
                                                    metric='tstats',
@@ -160,54 +171,139 @@ for icon in range(len(to_permute)):
                                                    tstat_args=tstat_args,
                                                    adjacency=adjacency)
 
-        with open(os.path.join(cfg['lemon_glm_data'], 'lemon-group_perms-con{0}.pkl'.format(icon)), "wb") as dill_file:
+        with open(os.path.join(cfg['lemon_glm_data'], 'lemon-group_perms-{0}.pkl'.format(p_name)), "wb") as dill_file:
             dill.dump(p, dill_file)
 
         P.append(p)
     else:
-        dill_file = os.path.join(cfg['lemon_glm_data'], 'lemon-group_perms-con{0}.pkl'.format(icon))
+        print('loading')
+        dill_file = os.path.join(cfg['lemon_glm_data'], 'lemon-group_perms-{0}.pkl'.format(p_name))
         P.append(dill.load(open(dill_file, 'rb')))
 
-# Permuate
-# Blinks on Mean, Mean on linear, task, blinks, bads
-to_permute_reduced = [(0, 0, 'Overall Mean'),
-                   (0, 4, 'Group Mean of Open>Closed'),
-                   (0, 2, 'Group Mean of Open'),
-                   (0, 3, 'Group Mean of Closed'),
-                   (1, 0, 'Group Effect of Age on Mean'),
-                   (1, 4, 'Group Effect of Age on Open>Closed'),
-                   (1, 2, 'Group Effect of Age on Open'),
-                   (1, 3, 'Group Effect of Age on Closed'),
-                   (5, 0, 'Group Effect of HeadSize on Mean'),
-                   (6, 0, 'Group Effect of GreyMatter on Mean')]
 
-Pn = []
+#%% -----------------------------------------------------
 
-run_perms = False
-for icon in range(len(to_permute_reduced)):
-    if to_permute_reduced[icon][1] > 3:
-        Pn.append(None)
-    elif run_perms:
-        gl_con = to_permute_reduced[icon][0]
-        fl_con = to_permute_reduced[icon][1]
-        # Only working with mean regressor for the moment
-        fl_mean_data = deepcopy(clean_reduced)
-        fl_mean_data.data = clean_reduced.data[:, fl_con, : ,:]
 
-        p = glm.permutations.MNEClusterPermutation(design, fl_mean_data, gl_con, 250,
-                                                   nprocesses=8,
-                                                   metric='tstats',
-                                                   cluster_forming_threshold=cft,
-                                                   tstat_args=tstat_args,
-                                                   adjacency=adjacency)
+#run_perms = False
+#standardise = False
+#for icon in range(len(to_permute)):
+#    if run_perms:
+#        gl_con = to_permute[icon][0]
+#        fl_con = to_permute[icon][1]
+#        # Only working with mean regressor for the moment
+#        fl_mean_data = deepcopy(clean_data)
+#        fl_mean_data.data = clean_data.data[:, fl_con, : ,:]
+#
+#        if standardise:
+#            #mn = fl_data.data.mean(axis=1)[:, None, :]
+#            #st = fl_data.data.std(axis=1)[:, None, :]
+#            factor = fl_mean_data.data.sum(axis=1)[:, None, :]
+#            fl_mean_data.data = fl_mean_data.data / factor
+#
+#        p = glm.permutations.MNEClusterPermutation(design, fl_mean_data, gl_con, 250,
+#                                                   nprocesses=8,
+#                                                   metric='tstats',
+#                                                   cluster_forming_threshold=cft,
+#                                                   tstat_args=tstat_args,
+#                                                   adjacency=adjacency)
+#
+#        with open(os.path.join(cfg['lemon_glm_data'], 'lemon-group_perms-con{0}.pkl'.format(icon)), "wb") as dill_file:
+#            dill.dump(p, dill_file)
+#
+#        P.append(p)
+#    else:
+#        dill_file = os.path.join(cfg['lemon_glm_data'], 'lemon-group_perms-con{0}.pkl'.format(icon))
+#        P.append(dill.load(open(dill_file, 'rb')))
 
-        with open(os.path.join(cfg['lemon_glm_data'], 'lemon-group_permsreduced-con{0}.pkl'.format(icon)), "wb") as dill_file:
-            dill.dump(p, dill_file)
 
-        Pn.append(p)
+
+
+def plot_perm_column(clean_data, gmodel, name, ax1, ax2, subpanel=None):
+    
+    icon = np.where([pp[4] == name for pp in to_permute])[0][0]  
+    gl_con, fl_con, gl_reg, fl_reg, p_name = to_permute[icon]
+    print(to_permute[icon])
+
+    fl_mean_data = deepcopy(clean_data)
+    fl_mean_data.data = clean_data.data[:, fl_con, : ,:]  # first level contrast of interest
+
+    dill_file = os.path.join(cfg['lemon_glm_data'], 'lemon-group_perms-{0}.pkl'.format(p_name))
+    print('Loading {}'.format(dill_file))
+    P = dill.load(open(dill_file, 'rb'))
+    print('Permutation threshold - {}'.format(P.get_thresh(95)))
+    print(P.get_obs_clusters(fl_mean_data)[2])
+
+    lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P, raw, ax1, xvect=freq_vect, base=0.5)
+    ax1.set_ylabel('t-stat')
+    if subpanel is not None:
+        lemon_plotting.subpanel_label(ax1, subpanel)
+    ax1.set_title('{0}'.format(p_name))
+
+    ix = np.ix_((0, 1), (0, 1, 2))
+    beta0 = gmodel.betas[ix[0], ix[1], : ,:].mean(axis=(0, 1))
+    print(beta0.shape)
+
+    ix = np.ix_(np.atleast_1d(gl_con), np.atleast_1d(fl_con))
+    beta1 = gmodel.copes[ix[0], ix[1], :, :].mean(axis=(0, 1))
+    print(beta1.shape)
+
+    mch = np.any([p_name.find(tag) > -1 for tag in ['OpenClosed', 'Linear','Sex','Brain','Grey']])
+
+    fx = lemon_plotting.prep_scaled_freq(0.5, freq_vect)
+    if mch:
+        ax2.plot(fx[0], np.mean(beta0 + -1*beta1, axis=1))
     else:
-        dill_file = os.path.join(cfg['lemon_glm_data'], 'lemon-group_permsreduced-con{0}.pkl'.format(icon))
-        Pn.append(dill.load(open(dill_file, 'rb')))
+        ax2.plot(fx[0], np.mean(beta0 + 0*beta1, axis=1))
+    ax2.plot(fx[0], np.mean(beta0 + 1*beta1, axis=1))
+    ax2.set_xticks(fx[2], fx[1])
+    lemon_plotting.decorate_spectrum(ax2)
+
+plt.figure()
+ax1 = plt.subplot(3,3,4)
+ax2 = plt.subplot(3,3,7)
+plot_perm_column(clean_data, gmodel, 'Mean_OpenClosed', ax1, ax2)
+
+ax1 = plt.subplot(3,3,5)
+ax2 = plt.subplot(3,3,8)
+plot_perm_column(clean_data, gmodel, 'YoungOld_Mean', ax1, ax2)
+
+ax1 = plt.subplot(3,3,6)
+ax2 = plt.subplot(3,3,9)
+plot_perm_column(clean_data, gmodel, 'YoungOld_OpenClosed', ax1, ax2)
+
+
+plt.figure()
+ax1 = plt.subplot(3,5,6)
+ax2 = plt.subplot(3,5,11)
+plot_perm_column(clean_data, gmodel, 'Mean_Linear', ax1, ax2)
+ax1 = plt.subplot(3,5,7)
+ax2 = plt.subplot(3,5,12)
+plot_perm_column(clean_data, gmodel, 'Mean_BadSeg', ax1, ax2)
+ax1 = plt.subplot(3,5,8)
+ax2 = plt.subplot(3,5,13)
+plot_perm_column(clean_data, gmodel, 'Mean_DiffBadSeg', ax1, ax2)
+ax1 = plt.subplot(3,5,9)
+ax2 = plt.subplot(3,5,14)
+plot_perm_column(clean_data, gmodel, 'Mean_VEOG', ax1, ax2)
+ax1 = plt.subplot(3,5,10)
+ax2 = plt.subplot(3,5,15)
+plot_perm_column(clean_data, gmodel, 'Mean_HEOG', ax1, ax2)
+
+plt.figure()
+ax1 = plt.subplot(3,3,4)
+ax2 = plt.subplot(3,3,7)
+plot_perm_column(clean_data, gmodel, 'Sex_Mean', ax1, ax2)
+
+ax1 = plt.subplot(3,3,5)
+ax2 = plt.subplot(3,3,8)
+plot_perm_column(clean_data, gmodel, 'BrainVol_Mean', ax1, ax2)
+
+ax1 = plt.subplot(3,3,6)
+ax2 = plt.subplot(3,3,9)
+plot_perm_column(clean_data, gmodel, 'GreyVol_Mean', ax1, ax2)
+
+
+eye
 
 
 #%% -----------------------------------------------------
