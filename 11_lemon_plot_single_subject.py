@@ -219,7 +219,7 @@ ax.plot(fx, model.copes[2, :, ch_ind], label='Eyes Open')
 ax.plot(fx, model.copes[3, :, ch_ind], label='Eyes Closed')
 ax.set_xticks(ft)
 ax.set_xticklabels(ftl)
-ax.set_ylabel('FFT Magnitude')
+ax.set_ylabel('Magnitude')
 ax.set_xlabel('Frequency (Hz)')
 ax.set_ylim(0)
 lemon_plotting.subpanel_label(ax, 'F', xf=-0.02, yf=1.1)
@@ -260,7 +260,7 @@ for ii in range(len(con_ind)):
         plt.gca().spines[tag].set_visible(False)
     plt.title('t-spectrum')
     plt.xlabel('Frequency (Hz)')
-    plt.ylabel('t-statistic')
+    plt.ylabel('pseudo-t statistic')
 
 fout = os.path.join(outdir, '{subj_id}_single-channel_glm-bottom.png'.format(subj_id=subj_id))
 plt.savefig(fout, dpi=300, transparent=True)
@@ -318,20 +318,20 @@ ax = plt.axes([0.075, 0.6, 0.175, 0.3])
 ax.set_ylim(0, 2e-5)
 lemon_plotting.plot_joint_spectrum(ax, model.copes[2, :, :], rawref, xvect=f,
                         freqs=[9], base=0.5, topo_scale=None,
-                        ylabel='Amplitude', title=model.contrast_names[2])
+                        ylabel='Magnitude', title=model.contrast_names[2])
 lemon_plotting.subpanel_label(ax, chr(65), yf=1.6)
 
 ax = plt.axes([0.3125, 0.6, 0.175, 0.3])
 ax.set_ylim(0, 2e-5)
 lemon_plotting.plot_joint_spectrum(ax, model.copes[3, :, :], rawref, xvect=f,
                         freqs=[9], base=0.5, topo_scale=None,
-                        ylabel='Amplitude', title=model.contrast_names[3])
+                        ylabel='Magnitude', title=model.contrast_names[3])
 lemon_plotting.subpanel_label(ax, chr(66), yf=1.6)
 
 # Plot Open > Closd
 ax = plt.axes([0.55, 0.6, 0.175, 0.3])
 lemon_plotting.plot_sensorspace_clusters(data, P[0], rawref, ax, xvect=f,
-                              ylabel='t-stat', base=0.5, topo_scale=None,
+                              ylabel='pseudo-t statistic', base=0.5, topo_scale=None,
                               title=model.contrast_names[P[0].contrast_idx])
 lemon_plotting.subpanel_label(ax, chr(67), yf=1.6)
 
@@ -343,7 +343,7 @@ for ii in range(5):
     ax = plt.axes([0.065+ii*0.195, 0.25, 0.125, 0.2])
     print(C[ii+4])
     lemon_plotting.plot_sensorspace_clusters(data, P[ii+4], rawref, ax, xvect=f,
-                                  ylabel='t-stat', base=0.5, topo_scale=None,
+                                  ylabel='pseudo-t statistic', base=0.5, topo_scale=None,
                                   title=model.contrast_names[P[ii+4].contrast_idx])
     lemon_plotting.subpanel_label(ax, chr(68+ii), yf=1.6)
 
@@ -351,7 +351,7 @@ for ii in range(5):
     ax2.set_ylim(0, 1.5e-5)
     proj,llabels = model.project_range(P[ii+4].contrast_idx-5, nsteps=2)
     lemon_plotting.plot_sensor_data(ax2, proj.mean(axis=2).T, rawref, xvect=f, base=0.5, sensor_cols=False, lw=2)
-    ylabel = 'Amplitude' if ii == 0 else ''
+    ylabel = 'Magnitude' if ii == 0 else ''
     lemon_plotting.decorate_spectrum(ax2, ylabel=ylabel)
     ax2.legend(ll[ii], frameon=False, fontsize=8)
     ax.set_title(model.contrast_names[P[ii+4].contrast_idx])

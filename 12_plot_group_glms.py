@@ -46,7 +46,7 @@ fontargs = {'fontsize': 'large', 'fontweight': 'bold', 'color':'r', 'ha':'center
 
 plt.figure(figsize=(16, 9))
 
-ppts = [43, 66, 5, 6, 11]
+ppts = [43, 145, 68, 62, 112]
 plt.axes((0.1, 0.5, 0.4*(9/16), 0.4))
 plt.plot(r2_reduced, r2, 'ko')
 plt.plot(r2_reduced[ppts], r2[ppts], 'ro')
@@ -74,35 +74,21 @@ plt.ylim(-0.5, 0.5)
 plt.xticks([1], ['Full Model minus \nreduced Model'])
 
 plt.axes((0.6, 0.5, 0.4*(9/16), 0.4))
-plt.text(sw_reduced[ppts][0]-0.02, sw[ppts][0]+0.02, labs[0], **fontargs)
-plt.text(sw_reduced[ppts][1]-0.02, sw[ppts][1]+0.02, labs[1], **fontargs)
-plt.text(sw_reduced[ppts][2], sw[ppts][2]-0.035, labs[2],      **fontargs)
-plt.text(sw_reduced[ppts][3]+0.035, sw[ppts][3], labs[3],      **fontargs)
-plt.text(sw_reduced[ppts][4]-0.02, sw[ppts][4]+0.02, labs[4], **fontargs)
-plt.plot(sw_reduced, sw, 'ko')
-plt.plot(sw_reduced[ppts], sw[ppts], 'ro')
+plt.hist(np.array(reduced.info['aic']) - np.array(data.info['aic']), np.linspace(-500, 500, 64))
+plt.xlabel('Reduced AIC - Full AIC')
+plt.ylabel('Num Datasets')
 
-plt.plot((0, 1), (0, 1), 'k')
 for tag in ['top', 'right']:
     plt.gca().spines[tag].set_visible(False)
-plt.xlabel('reduced Model')
-plt.ylabel('Full Model')
-plt.xlim(0.2, 1)
-plt.ylim(0.2, 1)
+
 lemon_plotting.subpanel_label(plt.gca(), 'B')
-plt.title('Shapiro-Wilks\nvalues closer to one indicate more gaussian residuals')
+plt.title("Akaike's Information Criterion\nmore positive values indicate a better 'full' model")
 
-plt.axes((0.875, 0.5, 0.05, 0.4))
-plt.boxplot(sw-sw_reduced)
-for tag in ['top', 'right']:
-    plt.gca().spines[tag].set_visible(False)
-plt.ylim(-0.2, 0.2)
-plt.xticks([1], ['Full Model minus \nreduced Model'])
 
 fx = lemon_plotting.prep_scaled_freq(0.5, freq_vect,)
 labs = ['C i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii']
 for ii in range(len(ppts[:5])):
-    ax = plt.axes((0.15+ii*0.16, 0.05, 0.1, 0.3))
+    ax = plt.axes((0.15+ii*0.16, 0.07, 0.1, 0.3))
     ax.plot(fx[0], reduced.data[ppts[ii], 0, : :].mean(axis=1))
     ax.plot(fx[0], data.data[ppts[ii], 0, : :].mean(axis=1))
     ax.set_xticks(fx[2][::2])
@@ -112,13 +98,14 @@ for ii in range(len(ppts[:5])):
     plt.ylim(0, 1.2e-5)
     lemon_plotting.subpanel_label(plt.gca(), labs[ii])
     if ii == 0:
-        plt.ylabel('FFT Magnitude')
+        plt.ylabel('Magnitude')
     plt.xlabel('Frequency (Hz)')
 plt.legend(['reduced Model', 'Full Model'], frameon=False)
 
 fout = os.path.join(cfg['lemon_figures'], 'lemon-group_stats-summary.png')
 plt.savefig(fout, transparent=True, dpi=300)
 
+eye
 
 #%% ---------------------------------------------------------------------
 # Plot main group results
@@ -284,12 +271,12 @@ plt.figure(figsize=(16, 12))
 
 ax = plt.axes((0.075, 0.675, 0.3, 0.25))
 lemon_plotting.plot_joint_spectrum(ax, gmodel.copes[0, 2, :, :], raw, freq_vect, base=0.5, freqs=[10, 22],
-                        topo_scale=None, title='GroupMean Eyes Open', ylabel='FFT Magnitude')
+                        topo_scale=None, title='GroupMean Eyes Open', ylabel='Magnitude')
 lemon_plotting.subpanel_label(ax, 'A')
 
 ax = plt.axes((0.45, 0.675, 0.3, 0.25))
 lemon_plotting.plot_joint_spectrum(ax, gmodel.copes[0, 3, :, :], raw, freq_vect, base=0.5, freqs=[10, 22],
-                        topo_scale=None, title='GroupMean Eyes Closed', ylabel='FFT Magnitude')
+                        topo_scale=None, title='GroupMean Eyes Closed', ylabel='Magnitude')
 lemon_plotting.subpanel_label(ax, 'B')
 
 ax = plt.axes([0.775, 0.7, 0.15, 0.15])
@@ -358,7 +345,7 @@ plt.legend(['{0}_{1}'.format(gmodel.contrast_names[2], fl_contrast_names[2]),
             '{0}_{1}'.format(gmodel.contrast_names[3], fl_contrast_names[2]),
             '{0}_{1}'.format(gmodel.contrast_names[2], fl_contrast_names[3]),
             '{0}_{1}'.format(gmodel.contrast_names[3], fl_contrast_names[3])], frameon=False)
-lemon_plotting.decorate_spectrum(ax, ylabel='FFT Magnitude')
+lemon_plotting.decorate_spectrum(ax, ylabel='Magnitude')
 ax.set_xticks(fx[2], fx[1])
 lemon_plotting.subpanel_label(ax, 'D')
 ax.set_ylim(0, 6.5e-6)
