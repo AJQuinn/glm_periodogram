@@ -140,7 +140,12 @@ for icon in range(len(to_permute)):
     fl_mean_data = deepcopy(clean_data)
     fl_mean_data.data = clean_data.data[:, fl_con, : ,:]
 
-    p = glm.permutations.MNEClusterPermutation(design, fl_mean_data, gl_con, 2000,
+    if icon > 0 and gl_con == 0:
+        cft = 6
+    else:
+        cft = 3
+
+    p = glm.permutations.MNEClusterPermutation(design, fl_mean_data, gl_con, 1500,
                                                nprocesses=8,
                                                metric='tstats',
                                                cluster_forming_threshold=cft,

@@ -378,17 +378,18 @@ for ii in range(10):
         change =  models[ii].r_square[0, :, :] * 100
         lemon_plotting.plot_sensor_spectrum(ax, change, rawref, f, base=0.5)
         label = 'Full Model' if ii == 0 else "'{0}' only".format(models[0].regressor_names[ii-1])
+        ax.set_ylim(0, 80)
         lemon_plotting.subpanel_label(ax, chr(65+ii))
     else:
         change =  models[ii-1].r_square[0, :, :] * 100
         lemon_plotting.plot_sensor_spectrum(ax, change, rawref, f, base=0.5)
         label = "'{0}' only".format(models[0].regressor_names[ii-2])
+        ax.set_ylim(0, 80)
         lemon_plotting.subpanel_label(ax, chr(65+ii-1))
 
     ax.set_ylabel('R-squared (%)')
     ax.set_title(label)
     labels.append(label)
-    ax.set_ylim(0, 80)
 
 ax = plt.subplot(313)
 for ii in range(9):

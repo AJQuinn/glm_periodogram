@@ -45,7 +45,7 @@ def plot_sensor_spectrum(ax, psd, raw, xvect, sensor_proj=False,
         plot_channel_layout(axins, raw)
 
 
-def subpanel_label(ax, label, xf=-0.1, yf=1.1):
+def subpanel_label(ax, label, xf=-0.1, yf=1.1, ha='center'):
     ypos = ax.get_ylim()[0]
     yyrange = np.diff(ax.get_ylim())[0]
     ypos = (yyrange * yf) + ypos
@@ -53,7 +53,7 @@ def subpanel_label(ax, label, xf=-0.1, yf=1.1):
     xpos = ax.get_xlim()[0]
     xxrange = np.diff(ax.get_xlim())[0]
     xpos = (xxrange * xf) + xpos
-    ax.text(xpos, ypos, label, horizontalalignment='center',
+    ax.text(xpos, ypos, label, horizontalalignment=ha,
             verticalalignment='center', fontsize=20, fontweight='bold')
 
 # Helpers
@@ -83,7 +83,7 @@ def plot_with_cols(ax, data, xvect, cols=None, lw=0.5):
 def prep_scaled_freq(base, freq_vect):
     """Assuming ephy freq ranges for now - around 1-40Hz"""
     fx = freq_vect**base
-    if base <= 1:
+    if base < 1:
         nticks = int(np.floor(np.sqrt(freq_vect[-1])))
         #ftick = np.array([2**ii for ii in range(6)])
         ftick = np.array([ii**2 for ii in range(1,nticks+1)])

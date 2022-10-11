@@ -105,8 +105,6 @@ plt.legend(['reduced Model', 'Full Model'], frameon=False)
 fout = os.path.join(cfg['lemon_figures'], 'lemon-group_stats-summary.png')
 plt.savefig(fout, transparent=True, dpi=300)
 
-eye
-
 #%% ---------------------------------------------------------------------
 # Plot main group results
 fl_contrast_names = ['OverallMean', 'RestMean', 
@@ -137,6 +135,7 @@ to_permute = (
     (6, 0, 4, (0, 1, 2), 'GreyVol_Mean'),
 )
 
+
 def plot_perm_column(clean_data, gmodel, name, ax1, ax2, subpanel=None):
     
     icon = np.where([pp[4] == name for pp in to_permute])[0][0]  
@@ -152,7 +151,7 @@ def plot_perm_column(clean_data, gmodel, name, ax1, ax2, subpanel=None):
     print('Permutation threshold - {}'.format(P.get_thresh(95)))
     print(P.get_obs_clusters(fl_mean_data)[2])
 
-    lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P, raw, ax1, xvect=freq_vect, base=0.5)
+    lemon_plotting.plot_sensorspace_clusters(fl_mean_data, P, raw, ax1, xvect=freq_vect, base=0.5, thresh=97.5)
     ax1.set_ylabel('pseudo-t statistic')
     if subpanel is not None:
         lemon_plotting.subpanel_label(ax1, subpanel)

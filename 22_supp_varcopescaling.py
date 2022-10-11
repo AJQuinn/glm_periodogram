@@ -105,10 +105,10 @@ lemon_plotting.plot_sensor_spectrum(ax, model.copes[1, :, :], refraw, f, base=0.
 ax.set_title('cope-spectrum')
 lemon_plotting.subpanel_label(ax, 'A')
 
-ax = plt.subplot(2,3,2)
+ax = plt.subplot(2,3,4)
 lemon_plotting.plot_sensor_spectrum(ax, model.varcopes[1, :, :], refraw, f, base=0.5)
 ax.set_title('varcope-spectrum')
-lemon_plotting.subpanel_label(ax, 'C')
+lemon_plotting.subpanel_label(ax, 'B')
 
 vc = glm.fit.varcope_corr_medfilt(model.varcopes[1, :, :], window_size=15, smooth_dims=0)
 ax = plt.subplot(2,3,3)
@@ -116,9 +116,9 @@ lemon_plotting.plot_sensor_spectrum(ax, vc, refraw, f, base=0.5)
 ax.set_title('smoothed varcope-spectrum')
 lemon_plotting.subpanel_label(ax, 'E')
 
-ax = plt.subplot(2,3,4)
+ax = plt.subplot(2,3,2)
 ax.plot(np.abs(model.copes[1, :, :].reshape(-1)), model.varcopes[1, :, :].reshape(-1), '.')
-lemon_plotting.subpanel_label(ax, 'B')
+lemon_plotting.subpanel_label(ax, 'C')
 for tag in ['top', 'right']:
     ax.spines[tag].set_visible(False)
 ax.set_xlabel('abs(cope_ values')
